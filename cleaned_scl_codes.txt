@@ -1,5 +1,5 @@
 (/*
-This is a program to control the winder function block and operate the line axis这对吗？？
+This is a program to control the winder function block and operate the line axis
 */)
   // Reset active axis error
   // Reset error of  winder axis
