@@ -1,0 +1,45 @@
+REGION DESCRIPTION
+(/*
+This is an example program to initialize the winder/sectional drive configuration data
+*/)
+END_REGION DESCRIPTION
+
+REGION INIT WINDER CONFIG
+  REGION TOP WINDER
+    // Initialize top winder in dancer control mode
+    "InitSMC_WinderDancerSpeedAdapt"(winderConfig => "LConSMC_Data".WinderConfig["TOP_WINDER"],
+                                     winderInput  => "LConSMC_Data".WinderInput["TOP_WINDER"]);
+    // Initialize speed controller Kp-Adaption function 
+    "InitSMC_KpAdaption"(kpAdaptionIn := "LConSMC_Data".kpAdaptionTop.in);
+    // Initialize friction measurement configuration (*optional if measurement is used*)
+    "InitSMC_FrictionMeasurement"("LConSMC_Data".frictionMeasurement["TOP_WINDER"].in);
+  END_REGION
+  
+  REGION BOTTOM WINDER
+    // Initialize bottom winder in indirect tension control mode
+    "InitSMC_WinderIndirectTension"(winderConfig => "LConSMC_Data".WinderConfig["BOTTOM_WINDER"],
+                                    winderInput  => "LConSMC_Data".WinderInput["BOTTOM_WINDER"]);
+    // Initialize friction measurement configuration (*optional if measurement is used*)
+    "InitSMC_FrictionMeasurement"("LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in);
+  END_REGION
+END_REGION ;
+
+REGION INIT SECTIONAL DRIVE CONFIG
+  // Initialization of sectional drive data in draw control mode
+  // *Note* Just for demonstration, there is no sectional drive axis included in the project
+  "InitSMC_SectionalDrawControl"(sectionalConfig => "LConSMC_Data".sectionalConfig[1],
+                                 sectionalInput  => "LConSMC_Data".sectionalInput[1]);
+  
+END_REGION
+
+REGION INIT LINE AXIS CONFIG
+    // In case of different unit of leading axis (not [m/min] or [ft/min]) the leading value motion vector (s,v,a) must be adapted before
+  // forwarding to the winder function block
+  // *Note* In this projects only for demonstration, not necessary as line axis is already in correct unit 
+  "InstLineUnitConversion"(lengthUnitInput              := "line".Units.LengthUnit,
+                           velocityUnitInput            := "line".Units.VelocityUnit,
+                           formatLength                 := "line".Mechanics.LeadScrew / 1.0e3,        // only needed for rotatory units
+                           lengthConversionFactor       => "LConSMC_Data".lengthConversion,           // factor --> [m] or [ft]
+                           velocityConversionFactor     => "LConSMC_Data".velocityConversion,         // factor --> [m/min] or [ft/min]
+                           accelerationConversionFactor => "LConSMC_Data".accelerationConversion);    // factor --> [m/s^2] or [ft/s^2]
+END_REGION

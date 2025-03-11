@@ -1,0 +1,11 @@
+// KpAdaptation configuration parameters
+
+REGION Init configuration parameters
+    
+    #kpAdaptionIn.adaptionMode := TRUE;     // TRUE: Use diameter ratio, FALSE: User inertia ratio
+    #kpAdaptionIn.externalMode := FALSE;    // TRUE: Calculation of adaption value, Value will NOT be written to telegram
+    #kpAdaptionIn.HWAddress := 299;         // Hardware address of extension telegram
+    #kpAdaptionIn.offset := 0;              // Byte offset within extension telegram
+    #kpAdaptionIn.enable := TRUE;           // TRUE: Enable Kp-Adaption
+    // #kpAdaptionIn.diameter               // Must be connected to output winder diameter in the user program
+END_REGION

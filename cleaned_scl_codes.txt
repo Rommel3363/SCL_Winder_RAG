@@ -1,0 +1,1618 @@
+(/*
+This is a program to control the winder function block and operate the line axis
+*/)
+  // Reset active axis error
+  // Reset error of  winder axis
+  "InstResetWinder"(Axis    := "winder",
+                       Execute := "resetError",
+                       Restart := FALSE);
+  // Reset error of bottom winder axis
+  "InstResetBottomWinder"(Axis    := "winderBottom",
+                          Execute := "resetError",
+                          Restart := FALSE);
+  // Reset error of line axis
+  "InstResetLine"(Axis    := "line",
+                  Execute := "resetError",
+                  Restart := FALSE);
+  // Add MC_Reset command for further axes
+  // Enable electrical infeed (*only for the demo cabinet required or in combination with SIMIT example project*)
+  "InstSinaInfeed"(EnablePrecharging := "enableElectricalInfeed",
+                   EnableInfeed      := "enableElectricalInfeed",
+                   AckFault          := "resetError",
+                   ConfigAxis        := #INFEED_CONFIG_AXIS,
+                   HWIDSTW           := "S120_WinderRack~PROFINET-Schnittstelle~Infeed_SIEMENS_Telegramm_370",
+                   HWIDZSW           := "S120_WinderRack~PROFINET-Schnittstelle~Infeed_SIEMENS_Telegramm_370");
+  // Enable axes
+  // Enable  winder axis
+  "InstEnableWinderAxis"(Axis      := "winder",
+                            Enable    := "enableAxes",
+                            StartMode := #SPEED_CONTROLLED);
+  // Enable bottom winder axis
+  "InstEnableBottomWinderAxis"(Axis      := "winderBottom",
+                               Enable    := "enableAxes",
+                               StartMode := #SPEED_CONTROLLED);
+  // Enable line axis
+  "InstEnableLineAxis"(Axis      := "line",
+                       Enable    := "enableAxes",
+                       StartMode := #POSITION_CONTROLLED);
+  // Add MC_Power command for further axes
+  // Example for winder control function block
+  // The function block must be adapted by the user according to the required automation logic
+  // Control  winder - Dancer control
+    // Set dancer setpoint position
+    IF "enableCtrlWinder" THEN
+      // Set dancer setpoint to middle position when activating tension control (=50%)
+      "LConSMC_Data".WinderInput["_WINDER"].CntrlSetpoint := 50.0;
+      "InstWinderControl".ctrlEnable := TRUE;
+    ELSE
+      // Before disabling tension control set dancer setpoint to lower limit (=0%) to prevent dancer from falling down when switching off the axis
+      "LConSMC_Data".WinderInput["_WINDER"].CntrlSetpoint := 0.0;
+      IF "LConSMC_Data".winderDiag["_WINDER"].technologyControllerDiag.pidRFGSetpointReached
+        AND "LConSMC_Data".WinderInput["_WINDER"].CntrlActual <= #DANCER_LOWER_LIMIT
+      THEN
+        // If the dancer has reached the setpoint position, disasble tension controller
+        "InstWinderControl".ctrlEnable := FALSE;
+      END_IF;
+    END_IF;
+    "InstWinderControl"(enableWinder := "enableWinder",
+                           speedMatch   := "enableWinder",
+                           //ctrlEnable   := "enableCtrlWinder", // Input is written above,
+                           setDiameter  := "setDiameter",
+                           winderInput  := "LConSMC_Data".WinderInput["_WINDER"],
+                           winderOutput := "LConSMC_Data".WinderOutput["_WINDER"]);
+  // Control bottom winder - Indirect tension control
+    "InstBottomWinderControl"(enableWinder := "enableWinder",
+                              speedMatch   := "enableWinder",
+                              ctrlEnable   := "enableCtrlWinderDown",
+                              setDiameter  := "setDiameter",
+                              winderInput  := "LConSMC_Data".WinderInput["BOTTOM_WINDER"],
+                              winderOutput := "LConSMC_Data".WinderOutput["BOTTOM_WINDER"]);
+  // Add LConExample_WinderControl FB for further winders
+  // Example for sectional drive control function block
+  // The function block must be adapted by the user according to the required automation logic
+  // Only for demonstration - No sectional drive axis is included in the example project!
+  "InstSectionalDriveControl"(sectionalDriveOutput := "LConSMC_Data".sectionalOutput[1],
+                              sectionalDriveInput  := "LConSMC_Data".sectionalInput[1]);
+  // Add LConExample_SectionalDriveControl FB for further sectional drives
+  // Control the line axis
+  "InstMoveLineAxis"(Axis               := "line",
+                     Execute            := "startLine" AND "InstEnableLineAxis".Status,
+                     Velocity           := "lineSetVelocity", // [m/min] Line velocity setpoint
+                     Acceleration       := 0.3,               // [m/s^2] Line acceleration
+                     Deceleration       := 0.3,               // [m/s^2] Line deceleration
+                     Jerk               := 600.0,             // [m/s^3] Line jerk
+                     Direction          := #DIRECTION_DEFINED_BY_SIGN,  // Direction is defined by the sign of the velocity input
+                     PositionControlled := TRUE);             // TRUE: Axis is posiiton controlled
+  "InstHaltLineAxis"(Axis              := "line",
+                     Execute           := "stopLineAxis" AND "InstEnableLineAxis".Status,
+                     Deceleration      := 0.6,      // [m/s^2] Line deceleration
+                     Jerk              := 1200.0,   // [m/s^3] Line jerk
+                     AbortAcceleration := FALSE);   // TRUE: Current active acceleration is set to zero 
+  // Optional function blocks to measure the friction characteristic of the connected axis
+  // --> Before starting the measurement the axis must be enabled
+  // Record friction measurement for  winder
+  "InstFrictionMeasurementWinder"(execute               := "LConSMC_Data".frictionMeasurement["_WINDER"].in.execute,
+                                     abort                 := "LConSMC_Data".frictionMeasurement["_WINDER"].in.abort,
+                                     warmUpTime            := "LConSMC_Data".frictionMeasurement["_WINDER"].in.warmUpTime,
+                                     rampTime              := "LConSMC_Data".frictionMeasurement["_WINDER"].in.rampTime,
+                                     noOfMeasurementPoints := "LConSMC_Data".frictionMeasurement["_WINDER"].in.noOfMeasurementPoints,
+                                     sizeOfArray           := "LConSMC_Data".frictionMeasurement["_WINDER"].in.sizeOfArray,
+                                     maxSpeed              := "LConSMC_Data".frictionMeasurement["_WINDER"].in.maxSpeed,
+                                     speedValues           := "LConSMC_Data".frictionMeasurement["_WINDER"].in.speedValues,
+                                     measurementDelayTime  := "LConSMC_Data".frictionMeasurement["_WINDER"].in.measurementDelayTime,
+                                     done                  => "LConSMC_Data".frictionMeasurement["_WINDER"].out.done,
+                                     valid                 => "LConSMC_Data".frictionMeasurement["_WINDER"].out.valid,
+                                     aborted               => "LConSMC_Data".frictionMeasurement["_WINDER"].out.aborted,
+                                     busy                  => "LConSMC_Data".frictionMeasurement["_WINDER"].out.busy,
+                                     error                 => "LConSMC_Data".frictionMeasurement["_WINDER"].out.error,
+                                     subfunctionState      => "LConSMC_Data".frictionMeasurement["_WINDER"].out.subfunctionState,
+                                     status                => "LConSMC_Data".frictionMeasurement["_WINDER"].out.status,
+                                     torqueOutValues       := "LConSMC_Data".WinderConfig["_WINDER"].torquePrecontrolConfig.yn_torqueValues,
+                                     speedOutValues        := "LConSMC_Data".WinderConfig["_WINDER"].torquePrecontrolConfig.xn_speedValues,
+                                     axis                  := "winder");
+  // Record friction measurement for bottom winder
+  "InstFrictionMeasurementWinderDown"(execute               := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.execute,
+                                      abort                 := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.abort,
+                                      warmUpTime            := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.warmUpTime,
+                                      rampTime              := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.rampTime,
+                                      noOfMeasurementPoints := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.noOfMeasurementPoints,
+                                      sizeOfArray           := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.sizeOfArray,
+                                      maxSpeed              := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.maxSpeed,
+                                      speedValues           := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.speedValues,
+                                      measurementDelayTime  := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.measurementDelayTime,
+                                      done                  => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.done,
+                                      valid                 => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.valid,
+                                      aborted               => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.aborted,
+                                      busy                  => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.busy,
+                                      error                 => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.error,
+                                      subfunctionState      => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.subfunctionState,
+                                      status                => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.status,
+                                      torqueOutValues       := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"].torquePrecontrolConfig.yn_torqueValues,
+                                      speedOutValues        := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"].torquePrecontrolConfig.xn_speedValues,
+                                      axis                  := "winderBottom");
+(/*
+This is an example program to call the winder function block and operate the line axis
+*/)
+  // Read cycle time of calling OB
+  IF #Initial_Call THEN
+    "LConSMC_Data".WinderInput["_WINDER"].tCycle     := UDINT_TO_REAL(#cycleTime / 1000000);                 // Convert unit: [ns] --> [ms]
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].tCycle  := "LConSMC_Data".WinderInput["_WINDER"].tCycle;
+    "LConSMC_Data".sectionalInput[1].tCycle             := "LConSMC_Data".WinderInput["_WINDER"].tCycle;
+  END_IF;
+  // Leading value interconnection
+  // Copy to local temp variables
+  // Line setpoint values
+  #tempLinePosition := "line".Position * "LConSMC_Data".lengthConversion;               // Convert unit to [m]
+  #tempLineVelocity := "line".Velocity * "LConSMC_Data".velocityConversion;             // Convert unit to [m/min]
+  #tempLineAcceleration := "line".Acceleration * "LConSMC_Data".accelerationConversion; // Convert unit to [m/s^2]
+  // Line actual values (used for diameter calculation)
+  #tempLineActPos := "line".ActualPosition * "LConSMC_Data".lengthConversion;           // Convert unit to [m]
+  #tempLineActVel := "line".ActualVelocity * "LConSMC_Data".velocityConversion;         // Convert unit to [m/min]
+    // Forward temporary variables to winder interface
+    "LConSMC_Data".WinderInput["_WINDER"].lineAxisMotionVector.s := #tempLinePosition;
+    "LConSMC_Data".WinderInput["_WINDER"].lineAxisMotionVector.v := #tempLineVelocity;
+    "LConSMC_Data".WinderInput["_WINDER"].lineAxisMotionVector.a := #tempLineAcceleration;
+    "LConSMC_Data".WinderInput["_WINDER"].lineAxisActualValues.s := #tempLineActPos;
+    "LConSMC_Data".WinderInput["_WINDER"].lineAxisActualValues.v := #tempLineActVel;
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.s := #tempLinePosition;
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.v := #tempLineVelocity;
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.a := #tempLineAcceleration;
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues.s := #tempLineActPos;
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues.v := #tempLineActVel;
+    "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.s := #tempLinePosition;
+    "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.v := #tempLineVelocity;
+    "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.a := #tempLineAcceleration;
+  // [%] Dancer actual value for TPID
+  "LConSMC_Data".WinderInput["_WINDER"].CntrlActual := "LConSMC_Linear"(x := "dancerActualPosition",
+                                                                           x1 := 1995,
+                                                                           y1 := 0.0,
+                                                                           x2 := 16700,
+                                                                           y2 := 100.0);
+  // [N] Tension actual value for TPID
+  "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlActual := "LConSMC_Linear"(x := "tensionWinderDown",
+                                                                              x1 := -27648,
+                                                                              y1 := -20.0,
+                                                                              x2 := 27648,
+                                                                              y2 := 20.0);
+  // [m] Linearization of external diameter sensor values for bottom winder
+  "LConSMC_Data".WinderConfig["_WINDER"].diamConfig.diameterSetValue := "LConSMC_Linear"(x := "diameterSensorWinder",
+                                                                                            x1 := 0,
+                                                                                            y1 := 0.41,
+                                                                                            x2 := 19900,
+                                                                                            y2 := 0.075);
+  //  winder control - Dancer control
+  "InstWinder"(enable               := "LConSMC_Data".WinderInput["_WINDER"].enable,
+                  speedMatch           := "LConSMC_Data".WinderInput["_WINDER"].speedMatch,
+                  cntrlEnable          := "LConSMC_Data".WinderInput["_WINDER"].cntrlEnable,
+                  jogPos               := "LConSMC_Data".WinderInput["_WINDER"].jogPos,
+                  jogNeg               := "LConSMC_Data".WinderInput["_WINDER"].jogNeg,
+                  lineAxisMotionVector := "LConSMC_Data".WinderInput["_WINDER"].lineAxisMotionVector,
+                  lineAxisActualValues := "LConSMC_Data".WinderInput["_WINDER"].lineAxisActualValues,
+                  additionalVelocity   := "LConSMC_Data".WinderInput["_WINDER"].additionalVelocity,
+                  typeOfWinder         := "LConSMC_Data".WinderInput["_WINDER"].typeOfWinder,
+                  controlMode          := "LConSMC_Data".WinderInput["_WINDER"].controlMode,
+                  typeOfDiameterCalc   := "LConSMC_Data".WinderInput["_WINDER"].typeOfDiameterCalc,
+                  holdDiameter         := "LConSMC_Data".WinderInput["_WINDER"].holdDiameter,
+                  setDiameter          := "LConSMC_Data".WinderInput["_WINDER"].setDiameter,
+                  CntrlSetpoint        := "LConSMC_Data".WinderInput["_WINDER"].CntrlSetpoint,
+                  CntrlActual          := "LConSMC_Data".WinderInput["_WINDER"].CntrlActual,
+                  tCycle               := "LConSMC_Data".WinderInput["_WINDER"].tCycle,
+                  winderAxis           := "LConSMC_Data".WinderInput["_WINDER"].winderAxis,
+                  busy                 => "LConSMC_Data".WinderOutput["_WINDER"].busy,
+                  active               => "LConSMC_Data".WinderOutput["_WINDER"].active,
+                  ctrlBusy             => "LConSMC_Data".WinderOutput["_WINDER"].ctrlBusy,
+                  inSync               => "LConSMC_Data".WinderOutput["_WINDER"].inSync,
+                  error                => "LConSMC_Data".WinderOutput["_WINDER"].error,
+                  errorID              => "LConSMC_Data".WinderOutput["_WINDER"].errorID,
+                  diameter             := "LConSMC_Data".winderDiameter["_WINDER"],
+                  winderConfig         := "LConSMC_Data".WinderConfig["_WINDER"],
+                  winderDiag           := "LConSMC_Data".winderDiag["_WINDER"]
+  );
+  // Bottom winder control - Indirect tension control
+  "InstWinderDown"(enable := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].enable,
+                   speedMatch := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].speedMatch,
+                   cntrlEnable := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].cntrlEnable,
+                   jogPos := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].jogPos,
+                   jogNeg := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].jogNeg,
+                   lineAxisMotionVector := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector,
+                   lineAxisActualValues := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues,
+                   additionalVelocity := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].additionalVelocity,
+                   typeOfWinder := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].typeOfWinder,
+                   controlMode := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].controlMode,
+                   typeOfDiameterCalc := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].typeOfDiameterCalc,
+                   holdDiameter := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].holdDiameter,
+                   setDiameter := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].setDiameter,
+                   CntrlSetpoint := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlSetpoint,
+                   CntrlActual := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlActual,
+                   tCycle := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].tCycle,
+                   winderAxis := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].winderAxis,
+                   busy => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].busy,
+                   active => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].active,
+                   ctrlBusy => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].ctrlBusy,
+                   inSync => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].inSync,
+                   error => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].error,
+                   errorID => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].errorID,
+                   diameter := "LConSMC_Data".winderDiameter["BOTTOM_WINDER"],
+                   winderConfig := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"],
+                   winderDiag := "LConSMC_Data".winderDiag["BOTTOM_WINDER"]
+  );
+  // Kp-Adaption speed controller adaption as a function of the current diameter (*optional*)
+  // Ony for SINAMICS S120 possible --> Linearization must be done in the SINAMICS
+  "LConSMC_Data".kpAdaption.in.diameter := "LConSMC_Data".winderDiameter["_WINDER"];
+  // Kp-Adaption for  winder
+  "InstKpAdaptionWinder"(enable          := "LConSMC_Data".kpAdaption.in.enable,
+                            adaptionMode    := "LConSMC_Data".kpAdaptionTop.in.adaptionMode,
+                            externalMode    := "LConSMC_Data".kpAdaptionTop.in.externalMode,
+                            diameter        := "LConSMC_Data".kpAdaptionTop.in.diameter,
+                            HWAddress       := "LConSMC_Data".kpAdaptionTop.in.HWAddress,
+                            offset          := "LConSMC_Data".kpAdaptionTop.in.offset,
+                            busy            => "LConSMC_Data".kpAdaptionTop.out.busy,
+                            kpAdaptionValue => "LConSMC_Data".kpAdaptionTop.out.kpAdaptionValue,
+                            error           => "LConSMC_Data".kpAdaptionTop.out.error,
+                            errorID         => "LConSMC_Data".kpAdaptionTop.out.errorID,
+                            winderDiag      := "LConSMC_Data".winderDiag["_WINDER"],
+                            winderConfig    := "LConSMC_Data".WinderConfig["_WINDER"]);
+  // Example to call sectional drive function block
+  "InstSectionalDrive"(enable               := "LConSMC_Data".sectionalInput[1].enable,
+                       speedMatch           := "LConSMC_Data".sectionalInput[1].speedMatch,
+                       CntrlEnable          := "LConSMC_Data".sectionalInput[1].CntrlEnable,
+                       jogPos               := "LConSMC_Data".sectionalInput[1].jogPos,
+                       jogNeg               := "LConSMC_Data".sectionalInput[1].jogNeg,
+                       lineAxisMotionVector := "LConSMC_Data".sectionalInput[1].lineAxisMotionVector,
+                       additionalVelocity   := "LConSMC_Data".sectionalInput[1].additionalVelocity,
+                       draw                 := "LConSMC_Data".sectionalInput[1].draw,
+                       typeOfDrive          := "LConSMC_Data".sectionalInput[1].typeOfDrive,
+                       controlMode          := "LConSMC_Data".sectionalInput[1].controlMode,
+                       CntrlSetpoint        := "LConSMC_Data".sectionalInput[1].CntrlSetpoint,
+                       CntrlActual          := "LConSMC_Data".sectionalInput[1].CntrlActual,
+                       tCycle               := "LConSMC_Data".sectionalInput[1].tCycle,
+                       axis                 := "LConSMC_Data".sectionalInput[1].axis,
+                       busy                 => "LConSMC_Data".sectionalOutput[1].busy,
+                       active               => "LConSMC_Data".sectionalOutput[1].active,
+                       inSync               => "LConSMC_Data".sectionalOutput[1].inSync,
+                       ctrlBusy             => "LConSMC_Data".sectionalOutput[1].ctrlBusy,
+                       error                => "LConSMC_Data".sectionalOutput[1].error,
+                       errorID              => "LConSMC_Data".sectionalOutput[1].errorID,
+                       sectionalConfig      := "LConSMC_Data".sectionalConfig[1],
+                       sectionalDiag        := "LConSMC_Data".sectionalDiag[1]);
+(/*
+This is an example program to initialize the winder/sectional drive configuration data
+*/)
+    // Initialize  winder in dancer control mode
+    "InitSMC_WinderDancerSpeedAdapt"(winderConfig => "LConSMC_Data".WinderConfig["_WINDER"],
+                                     winderInput  => "LConSMC_Data".WinderInput["_WINDER"]);
+    // Initialize speed controller Kp-Adaption function 
+    "InitSMC_KpAdaption"(kpAdaptionIn := "LConSMC_Data".kpAdaptionTop.in);
+    // Initialize friction measurement configuration (*optional if measurement is used*)
+    "InitSMC_FrictionMeasurement"("LConSMC_Data".frictionMeasurement["_WINDER"].in);
+    // Initialize bottom winder in indirect tension control mode
+    "InitSMC_WinderIndirectTension"(winderConfig => "LConSMC_Data".WinderConfig["BOTTOM_WINDER"],
+                                    winderInput  => "LConSMC_Data".WinderInput["BOTTOM_WINDER"]);
+    // Initialize friction measurement configuration (*optional if measurement is used*)
+    "InitSMC_FrictionMeasurement"("LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in);
+  // Initialization of sectional drive data in draw control mode
+  // *Note* Just for demonstration, there is no sectional drive axis included in the project
+  "InitSMC_SectionalDrawControl"(sectionalConfig => "LConSMC_Data".sectionalConfig[1],
+                                 sectionalInput  => "LConSMC_Data".sectionalInput[1]);
+    // In case of different unit of leading axis (not [m/min] or [ft/min]) the leading value motion vector (s,v,a) must be adapted before
+  // forwarding to the winder function block
+  // *Note* In this projects only for demonstration, not necessary as line axis is already in correct unit 
+  "InstLineUnitConversion"(lengthUnitInput              := "line".Units.LengthUnit,
+                           velocityUnitInput            := "line".Units.VelocityUnit,
+                           formatLength                 := "line".Mechanics.LeadScrew / 1.0e3,        // only needed for rotatory units
+                           lengthConversionFactor       => "LConSMC_Data".lengthConversion,           // factor --> [m] or [ft]
+                           velocityConversionFactor     => "LConSMC_Data".velocityConversion,         // factor --> [m/min] or [ft/min]
+                           accelerationConversionFactor => "LConSMC_Data".accelerationConversion);    // factor --> [m/s^2] or [ft/s^2]
+// functionality: initialization inputs of friction measurement V2 inputs
+#input.execute := FALSE;
+#input.abort := FALSE;
+#input.warmUpTime := T#30s;           //  Duration drive is moving with maximum speed before measurement starts
+#input.measurementDelayTime := T#1s;    //  Delay time before starting measurement when speed setpoint has been reached
+#input.rampTime := 1000.0;          //  [ms] Ramp-Up time to accelerate up to maximum speed setpoints (maxSpeed if <> 0 or maximum value from speedValues of maxSpeed = 0)
+#input.noOfMeasurementPoints := 100;    //  [-]  Number of measuring points per speed setpoint [50-500]
+#input.sizeOfArray := 10;              //  [-]  Limited between 1.."LCON_MAX_VALUE_BREAK_POINT_TABLE"+1
+//       input maxSpeed = 0  : Number of values taken from speedValues array [0..sizeOfArray-1]
+//       input maxSpeed <> 0 : Number of speed setpoints between maxSpeed and 0
+#input.maxSpeed := 0.0;             //  [RPM-load side]  maxSpeed = 0  : Number of values taken from speedValues array [0..sizeOfArray-1]
+//                   maxSpeed <> 0 : Automatic speed setpoint generation between maxSpeed and 0 --> Number of steps defined via sizeOfArray
+// Speed setpoints to be measured if "maxSpeed" = 0
+// !Values must be entered in [RPM] on motor side!
+// --> Conversion on TO unit will be done automatically
+#input.speedValues.values[0] := 100.0;  // [RPM] on drive side
+#input.speedValues.values[1] := 200.0;
+#input.speedValues.values[2] := 300.0;
+#input.speedValues.values[3] := 400.0;
+#input.speedValues.values[4] := 500.0;
+#input.speedValues.values[5] := 600.0;
+#input.speedValues.values[6] := 700.0;
+#input.speedValues.values[7] := 800.0;
+#input.speedValues.values[8] := 900.0;
+#input.speedValues.values[9] := 1000.0;
+#input.speedValues.values[10] := 0.0;
+#input.speedValues.values[11] := 0.0;
+#input.speedValues.values[12] := 0.0;
+#input.speedValues.values[13] := 0.0;
+#input.speedValues.values[14] := 0.0;
+#input.speedValues.values[15] := 0.0;
+#input.speedValues.values[16] := 0.0;
+#input.speedValues.values[17] := 0.0;
+#input.speedValues.values[18] := 0.0;
+#input.speedValues.values[19] := 0.0;
+// KpAdaptation configuration parameters
+    #kpAdaptionIn.adaptionMode := TRUE;     // TRUE: Use diameter ratio, FALSE: User inertia ratio
+    #kpAdaptionIn.externalMode := FALSE;    // TRUE: Calculation of adaption value, Value will NOT be written to telegram
+    #kpAdaptionIn.HWAddress := 299;         // Hardware address of extension telegram
+    #kpAdaptionIn.offset := 0;              // Byte offset within extension telegram
+    #kpAdaptionIn.enable := TRUE;           // TRUE: Enable Kp-Adaption
+    // #kpAdaptionIn.diameter               // Must be connected to output winder diameter in the user program
+// functionality: initialization of an winder instance for control mode "Dancer speed adapt"
+    #sectionalInput.enable := FALSE;
+    #sectionalInput.speedMatch := FALSE;
+    #sectionalInput.CntrlEnable := FALSE;
+    #sectionalInput.jogPos := FALSE;
+    #sectionalInput.jogNeg := FALSE;
+    #sectionalInput.additionalVelocity := 0.0;
+    #sectionalInput.axis := 0;
+    #sectionalInput.draw := 1.0;
+    #sectionalInput.typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL"; //[0-1] 0=PULL 1=PUSH
+    #sectionalInput.controlMode := "LCON_CONTROL_MODE_DANCER_SPEED";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = DrawControl
+    #sectionalInput.CntrlSetpoint := 50.0;
+    #sectionalInput.tCycle := 0.0; //is set in PostServo
+        #sectionalConfig.positionControlled := FALSE;
+        #sectionalConfig.diameter := 0.5;
+        #sectionalConfig.axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #sectionalConfig.getAxisConfigAtStart := TRUE;
+        #sectionalConfig.torquePrecontrolConfig.loadGear.numerator := 1;    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.torquePrecontrolConfig.loadGear.denominator := 1;  // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        // #sectionalConfig.overrideVelocity := 0.0; //[LU/min]
+        #sectionalConfig.maxVelocity := 100.0; //[LU/min]
+        #sectionalConfig.jogVelocity := 3.0; //[LU/min]
+        #sectionalConfig.unitConfiguration.metricUnits := TRUE;
+        #sectionalConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.unitConfiguration.axisVelocityUnit := 1521;   // [°/s] // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration := LREAL_TO_REAL(360.0 * 0.65);  // [TOUnit] //convert to real to prevent warnings
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration := LREAL_TO_REAL(360.0 * 0.65);  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk := LREAL_TO_REAL(360.0 * 1.3);   // [TOUnit]
+        #sectionalConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.acceleration := 10 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.deceleration := 10 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.acceleration := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.deceleration := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.jerk := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk;        // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.abortAcceleration := FALSE;
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.deceleration := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.jerk := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk;          // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.abortAcceleration := TRUE;
+        #sectionalConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0; //[relative]
+        #sectionalConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0; //[relative]
+        #sectionalConfig.torquePrecontrolConfig.referenceTorque := 0.6;   // Parameter 2003 in the SINAMICS // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+            #sectionalConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #sectionalConfig.torquePrecontrolConfig.frictionAdjustment := 1.0;
+            #sectionalConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 5.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.0137;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #sectionalConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #sectionalConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #sectionalConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #sectionalConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;
+        #sectionalConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #sectionalConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #sectionalConfig.technologyControllerConfig.tensionReference := 0.0;
+        //actual value
+        #sectionalConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        #sectionalConfig.technologyControllerConfig.deadBand := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        //P-part
+        #sectionalConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        #sectionalConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        #sectionalConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        #sectionalConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        #sectionalConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        //I-part
+        #sectionalConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        #sectionalConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        #sectionalConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        #sectionalConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        //D-part
+        #sectionalConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        #sectionalConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        //output
+        #sectionalConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        #sectionalConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        #sectionalConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        #sectionalConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        #sectionalConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #sectionalConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #sectionalConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+// functionality: initialization of an winder instance
+    #sectionalInput.enable := FALSE;
+    #sectionalInput.speedMatch := FALSE;
+    #sectionalInput.CntrlEnable := FALSE;
+    #sectionalInput.jogPos := FALSE;
+    #sectionalInput.jogNeg := FALSE;
+    #sectionalInput.additionalVelocity := 0.0;
+    #sectionalInput.draw := 1.0;
+    #sectionalInput.typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL"; //[0-1] 0=PULL 1=PUSH
+    #sectionalInput.controlMode := "LCON_CONTROL_MODE_DRAW_CONTROL";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = DrawControl
+    // #winderInput.CntrlSetpoint := 0.0;
+    // #winderInput.tCycle        := 0.0; //is set in PostServo
+        #sectionalConfig.positionControlled := FALSE;
+        #sectionalConfig.diameter := 0.5;
+        #sectionalConfig.axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #sectionalConfig.getAxisConfigAtStart := TRUE;
+        #sectionalConfig.torquePrecontrolConfig.loadGear.numerator := 1;    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.torquePrecontrolConfig.loadGear.denominator := 1;  // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        // #sectionalConfig.overrideVelocity  := 10.0; //[LU/min]
+        #sectionalConfig.maxVelocity := 100.0; //[LU/min]
+        #sectionalConfig.jogVelocity := 3.0; //[LU/min]
+        #sectionalConfig.unitConfiguration.metricUnits := TRUE;
+        #sectionalConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.unitConfiguration.axisVelocityUnit := 1061;   // [m/s] // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration := 0.075;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration := 0.075;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk := 150;   // [TOUnit]
+        #sectionalConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.acceleration := 0.3;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.deceleration := 0.3;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.acceleration := 0.15;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.deceleration := 0.15;
+        ;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.jerk := 300;         // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.abortAcceleration := FALSE;
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.syncToleranceFactor := 1.1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.deceleration := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.jerk := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk;          // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.abortAcceleration := TRUE;
+        #sectionalConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0;
+        #sectionalConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0;
+        #sectionalConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+            #sectionalConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #sectionalConfig.torquePrecontrolConfig.frictionAdjustment := 1.0;
+            #sectionalConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 5.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.0137;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #sectionalConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #sectionalConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #sectionalConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #sectionalConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;
+        #sectionalConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #sectionalConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #sectionalConfig.technologyControllerConfig.tensionReference := 0.0;
+        // //actual value
+        // #sectionalConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        // #sectionalConfig.technologyControllerConfig.deadBand   := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        // //P-part
+        // #sectionalConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        // #sectionalConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        // #sectionalConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        // #sectionalConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        // #sectionalConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        // //I-part
+        // #sectionalConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        // #sectionalConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        // #sectionalConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        // #sectionalConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        // //D-part
+        // #sectionalConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        // #sectionalConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        // //output
+        // #sectionalConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        // #sectionalConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        // #sectionalConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        // #sectionalConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        #sectionalConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #sectionalConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #sectionalConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+  // Comment/Function: Initialize parameter for control mode "Indirect tension control via speed setpoint adaption"
+(/*
+This FC provides all necessary input/ configuration parameter which are necessary to configure for the control mode "Indirect tension control via speed setpoint adaption".
+NOTE
+: For multiple use of the FC with different sectional drives add configuration parameter to the input structure of the function
+---
+*/)
+    #sectionalInput.enable := FALSE;
+    #sectionalInput.speedMatch := FALSE;
+    #sectionalInput.CntrlEnable := FALSE;
+    #sectionalInput.jogPos := FALSE;
+    #sectionalInput.jogNeg := FALSE;
+    #sectionalInput.additionalVelocity := 0.0;
+    #sectionalInput.axis := 0;
+    #sectionalInput.draw := 1.0;
+    #sectionalInput.typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL"; //[0-1] 0=PULL 1=PUSH
+    #sectionalInput.controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION_SPEED_ADAPT";  // [0-5] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant 5 = Indirect vis speed adapt
+    #sectionalInput.CntrlSetpoint := 50.0;  // [N] Tension setpoint
+    #sectionalInput.tCycle := 0.0;          //[ms] Add cycle time in which FB is called
+        #sectionalConfig.positionControlled := FALSE;
+        #sectionalConfig.axisCtrl := TRUE;
+        #sectionalConfig.diameter := 0.5; // [m] Roll diameter
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #sectionalConfig.getAxisConfigAtStart := TRUE;
+        #sectionalConfig.torquePrecontrolConfig.loadGear.numerator := 1;    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.torquePrecontrolConfig.loadGear.denominator := 1;  // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        // #sectionalConfig.overrideVelocity := 0.0; //[LU/min]
+        #sectionalConfig.maxVelocity := 100.0; //[LU/min]
+        #sectionalConfig.jogVelocity := 3.0; //[LU/min]
+        #sectionalConfig.unitConfiguration.metricUnits := TRUE;
+        #sectionalConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.unitConfiguration.axisVelocityUnit := 1521;   // [°/s] // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration := -1.0;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration := -1.0;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk := -1.0;   // [TOUnit]
+        #sectionalConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.acceleration := -1.0;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.deceleration := -1.0;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.acceleration := -1.0;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.deceleration := -1.0;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.jerk := -1.0;        // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.abortAcceleration := FALSE;
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.deceleration := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.jerk := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk;          // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.abortAcceleration := TRUE;
+        #sectionalConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0; //[relative]
+        #sectionalConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0; //[relative]
+        #sectionalConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+            #sectionalConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #sectionalConfig.torquePrecontrolConfig.frictionAdjustment := 1.0;
+            #sectionalConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 0.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.00;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #sectionalConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #sectionalConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #sectionalConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #sectionalConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;
+        #sectionalConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #sectionalConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #sectionalConfig.technologyControllerConfig.tensionReference := 0.0;
+        //actual value
+        #sectionalConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        #sectionalConfig.technologyControllerConfig.deadBand := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        //P-part
+        #sectionalConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        #sectionalConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        #sectionalConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        #sectionalConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        #sectionalConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        //I-part
+        #sectionalConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        #sectionalConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        #sectionalConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        #sectionalConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        //D-part
+        #sectionalConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        #sectionalConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        //output
+        #sectionalConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        #sectionalConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        #sectionalConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        #sectionalConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        #sectionalConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #sectionalConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #sectionalConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+// functionality: initialization of an winder instance for control mode "Tension torque adaption"
+    #sectionalInput.enable := FALSE;
+    #sectionalInput.speedMatch := FALSE;
+    #sectionalInput.CntrlEnable := FALSE;
+    #sectionalInput.jogPos := FALSE;
+    #sectionalInput.jogNeg := FALSE;
+    #sectionalInput.additionalVelocity := 0.0;
+    #sectionalInput.axis := 0;
+    #sectionalInput.draw := 1.0;
+    #sectionalInput.typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL"; //[0-1] 0=PULL 1=PUSH
+    #sectionalInput.controlMode := "LCON_CONTROL_MODE_TENSION_TORQUE";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant
+    #sectionalInput.CntrlSetpoint := 50.0;
+    #sectionalInput.tCycle := 0.0; //is set in PostServo
+        #sectionalConfig.positionControlled := FALSE;
+        #sectionalConfig.axisCtrl := TRUE;
+        #sectionalConfig.diameter := 0.5;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #sectionalConfig.getAxisConfigAtStart := True;
+        #sectionalConfig.torquePrecontrolConfig.loadGear.numerator := 1;    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.torquePrecontrolConfig.loadGear.denominator := 1;  // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.overrideVelocity := 10.0; //[LU/min]
+        #sectionalConfig.maxVelocity := 100.0; //[LU/min]
+        #sectionalConfig.jogVelocity := 3.0; //[LU/min]
+        #sectionalConfig.unitConfiguration.metricUnits := TRUE;
+        #sectionalConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.unitConfiguration.axisVelocityUnit := 1521;   // [°/s] // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration := LREAL_TO_REAL(360 * 0.65);  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration := LREAL_TO_REAL(360 * 0.65);  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk := LREAL_TO_REAL(360 * 1.3);   // [TOUnit]
+        #sectionalConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.acceleration := 10 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.deceleration := 10 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.acceleration := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.deceleration := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.jerk := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk;        // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.abortAcceleration := FALSE;
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.deceleration := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.jerk := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk;          // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.abortAcceleration := TRUE;
+        #sectionalConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0; //[relative]
+        #sectionalConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0; //[relative]
+        #sectionalConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+            #sectionalConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #sectionalConfig.torquePrecontrolConfig.frictionAdjustment := 1.0;
+            #sectionalConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 0.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.00;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #sectionalConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #sectionalConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #sectionalConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #sectionalConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;
+        #sectionalConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #sectionalConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #sectionalConfig.technologyControllerConfig.tensionReference := 0.0;
+        //actual value
+        #sectionalConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        #sectionalConfig.technologyControllerConfig.deadBand := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        //P-part
+        #sectionalConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        #sectionalConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        #sectionalConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        #sectionalConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        #sectionalConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        //I-part
+        #sectionalConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        #sectionalConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        #sectionalConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        #sectionalConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        //D-part
+        #sectionalConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        #sectionalConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        //output
+        #sectionalConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        #sectionalConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        #sectionalConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        #sectionalConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        #sectionalConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #sectionalConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #sectionalConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+// This is an example to set the inputs of the winder function block.  The code must be adapted according the user automation logic.
+  // TRUE: Enable function block. With rising edge a validation of parameter is done and communication with drive is started
+  // FALSE: Disable the function block
+  #winderInput.enable := #enableWinder;
+  // TRUE: Set diameter to the value in "winderConfig.diamConfig.diameterSetValue"
+  // FALSE: Internal diameter calculation is active
+  #winderInput.setDiameter := #setDiameter;
+  //TRUE: Enable web velocity setpoint ("lineAxisMotionVector"). The drive will synchronize up to web velocity using syncronization dynamics. If the velocity is reached the output "inSync" will become TRUE.
+  //FALSE: Drive will decelerate to standstill using stop dynamics
+  #winderInput.speedMatch := #speedMatch AND #winderOutput.busy AND #winderOutput.active;
+  //TRUE: Enable web tension control (enable torque limits, dancer position setpoint etc.) 
+  #winderInput.cntrlEnable := #ctrlEnable AND #winderOutput.inSync AND NOT #winderOutput.error;
+  #busy := #winderOutput.busy;
+  #ctrlBusy := #winderOutput.ctrlBusy;
+  #inSync := #winderOutput.inSync;
+  #error := #winderOutput.error;
+  #errorID := #winderOutput.errorID;
+// winder dancer speed adapt
+    #winderInput.enable := FALSE;
+    #winderInput.speedMatch := FALSE;
+    #winderInput.cntrlEnable := FALSE;
+    #winderInput.jogPos := FALSE;
+    #winderInput.jogNeg := FALSE;
+    #winderInput.additionalVelocity := 0.0;
+    #winderInput.winderAxis := "winder";
+    #winderInput.typeOfWinder := "LCON_TYPE_OF_WINDER_UNWIND_FROM_ABOVE"; //[0-3] 0=RfA, 1=RfB, 2=UfA, 3=Ufb
+    #winderInput.controlMode := "LCON_CONTROL_MODE_DANCER_SPEED";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant
+    #winderInput.holdDiameter := FALSE;
+    #winderInput.setDiameter := FALSE;
+    #winderInput.CntrlSetpoint := 50.0;
+    #winderInput.tCycle := 0.0; //is set in PostServo
+        #winderConfig.positionControlled := FALSE;
+        #winderConfig.axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #winderConfig.getAxisConfigAtStart := TRUE;
+        #winderConfig.torquePrecontrolConfig.loadGear.numerator := 1;       // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.torquePrecontrolConfig.loadGear.denominator := 1;     // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        // #winderConfig.overrideVelocity := 0.0; //[LU/min]
+        #winderConfig.maxVelocity := 100.0; //[LU/min]
+        #winderConfig.jogVelocity := 3.0; //[LU/min]
+        #winderConfig.unitConfiguration.metricUnits := TRUE;
+        #winderConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]       // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.unitConfiguration.axisVelocityUnit := 1521;   // [°/s]    // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #winderConfig.winderDynamics.jogDynamics.acceleration := 360.0;  // [TOUnit] //convert to real to prevent warnings
+        #winderConfig.winderDynamics.jogDynamics.deceleration := 360.0;  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.jerk := 0.0;   // [TOUnit]
+        #winderConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #winderConfig.winderDynamics.operationDynamics.acceleration := LREAL_TO_REAL("winder".DynamicLimits.MaxAcceleration);  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.deceleration := LREAL_TO_REAL("winder".DynamicLimits.MaxDeceleration);  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #winderConfig.winderDynamics.syncDynamics.acceleration := 360.0;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.deceleration := 360.0;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.jerk := 0.0;        // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.abortAcceleration := FALSE;
+        #winderConfig.winderDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #winderConfig.winderDynamics.sDynamics.deceleration := 360.0;  // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.jerk := 0.0;          // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.abortAcceleration := TRUE;
+        #winderConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0; //[relative]
+        #winderConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0; //[relative]
+        #winderConfig.torquePrecontrolConfig.referenceTorque := 0.6;   // Parameter 2003 in the SINAMICS    // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+            #winderConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #winderConfig.torquePrecontrolConfig.frictionAdjustment := 0.0;
+            #winderConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 5.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.0137;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.MaterialWidth := 0.035;
+            #winderConfig.torquePrecontrolConfig.MaterialDensity := 1441.7;     // [kg/m^3 or lb/ft^3]
+            #winderConfig.torquePrecontrolConfig.MaterialFillFactor := 1.0;     // [%] 1.0 = 100 Percent of Product fill (i.e. strip/gap ratio on traverse winder)
+            #winderConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #winderConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #winderConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #winderConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #winderConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;      // [%] 1.0 = 100% Adjustment factor to adjust tension torque precontrol
+        #winderConfig.torquePrecontrolConfig.dDdTAdjustment := 0.0;         // [%] 1.0 = 100% Adjustment factor to adjust dD/dT compensation torque
+        #winderConfig.torquePrecontrolConfig.additiveTorque := 0.0;         // [Nm or Lbf ft] Additive torque value on drive side for rewinders
+        #winderConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #winderConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #winderConfig.technologyControllerConfig.tensionReference := 0.0;
+        //actual value
+        #winderConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        #winderConfig.technologyControllerConfig.deadBand := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        //P-part
+        #winderConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        #winderConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        #winderConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        #winderConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        #winderConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        //I-part
+        #winderConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        #winderConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        #winderConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        #winderConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        //D-part
+        #winderConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        #winderConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        //output
+        #winderConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        #winderConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        #winderConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        #winderConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        //type
+        #winderConfig.diamConfig.useLineAxisActualValues := TRUE;
+        #winderInput.typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_POSITION";      // [0-5] 0=Diamcalcdivision,1=Diamcalcaddition,2=Diamcalcintegral,3=DiamExternal,4=WebLength,5=Diamcalcpos
+        //dimensions
+        #winderConfig.diamConfig.minDia := 0.075;    // [m / in] Minimum diameter Allowed
+        #winderConfig.diamConfig.maxDia := 0.475;    // [m / in] maximum diameter Allowed
+        //limits
+        #winderConfig.diamConfig.minLineVelocity := 0.5;   // [LU / min] Minimum line velocity for calculation
+        #winderConfig.diamConfig.minShaftSpeed := 2.0;     // [rpm] Minimum shaft speed for calculation
+        //filters
+        #winderConfig.diamConfig.lineFilterTime := 20.0;    // [ms] Filter time
+        #winderConfig.diamConfig.shaftFilterTime := 20.0;   // [ms] Filter time
+        #winderConfig.diamConfig.diameterFilterTime := 0.0;    // [ms] Filter time
+        //settings
+        #winderConfig.diamConfig.diameterSetValue := 0.475;     // [m or in] diameter Set Value
+        #winderConfig.diamConfig.webThickness := 1.275e-4;   // [m]
+        //calculation
+        #winderConfig.diamConfig.measuringRevolutionCount := 4.0;     // [rev] Shaft Revolutions counts  for diamcalintegral
+        #winderConfig.diamConfig.firstDiameterOutput := 0.5;
+        #winderConfig.diamConfig.diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #winderConfig.diamConfig.shaftModLength := 360.0;
+        #winderConfig.diamConfig.lineModLength := 1.0;
+        #winderConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #winderConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #winderConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+// functionality: initialization of an winder instance of winder indirect tension
+    #winderInput.enable := FALSE;
+    #winderInput.speedMatch := FALSE;
+    #winderInput.cntrlEnable := FALSE;
+    #winderInput.jogPos := FALSE;
+    #winderInput.jogNeg := FALSE;
+    #winderInput.additionalVelocity := 0.0;
+    #winderInput.winderAxis := "winderBottom";
+    #winderInput.typeOfWinder := "LCON_TYPE_OF_WINDER_REWIND_FROM_ABOVE"; //[0-3] 0=RfA, 1=RfB, 2=UfA, 3=Ufb
+    #winderInput.controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant
+    #winderInput.holdDiameter := FALSE;
+    #winderInput.setDiameter := FALSE;
+    #winderInput.CntrlSetpoint := 10.0;
+    // #winderInput.tCycle        := 0.0; //is set in PostServo
+        #winderConfig.positionControlled := FALSE;
+        #winderConfig.axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #winderConfig.getAxisConfigAtStart := TRUE;
+        #winderConfig.torquePrecontrolConfig.loadGear.numerator := 1;   // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.torquePrecontrolConfig.loadGear.denominator := 1; // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.overrideVelocity := 10.0; //[LU/min]
+        #winderConfig.maxVelocity := 100.0; //[LU/min]
+        #winderConfig.jogVelocity := 3.0; //[LU/min]
+        #winderConfig.unitConfiguration.metricUnits := TRUE;
+        #winderConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]       // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.unitConfiguration.axisVelocityUnit := 1083;   // [1/min]  // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #winderConfig.winderDynamics.jogDynamics.acceleration := 1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.deceleration := 1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.jerk := 0.0;   // [TOUnit]
+        #winderConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #winderConfig.winderDynamics.operationDynamics.acceleration := LREAL_TO_REAL("winderBottom".DynamicLimits.MaxAcceleration);  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.deceleration := LREAL_TO_REAL("winderBottom".DynamicLimits.MaxDeceleration);  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #winderConfig.winderDynamics.syncDynamics.acceleration := 1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.deceleration := 1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.jerk := 0.0;        // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.abortAcceleration := FALSE;
+        #winderConfig.winderDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #winderConfig.winderDynamics.sDynamics.deceleration := 1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.jerk := 0.0;          // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.abortAcceleration := TRUE;
+        #winderConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0;
+        #winderConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0;
+        #winderConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+            #winderConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #winderConfig.torquePrecontrolConfig.frictionAdjustment := 0.0;
+            #winderConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 5.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.0137;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.MaterialWidth := 0.035;
+            #winderConfig.torquePrecontrolConfig.MaterialDensity := 1441.7;     // [kg/m^3 or lb/ft^3]
+            #winderConfig.torquePrecontrolConfig.MaterialFillFactor := 1.0;     // [%] 1.0 = 100 Percent of Product fill (i.e. strip/gap ratio on traverse winder)
+            #winderConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #winderConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #winderConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #winderConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #winderConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;     // [%] 1.0 = 100% Adjustment factor to adjust tension torque precontrol
+        #winderConfig.torquePrecontrolConfig.dDdTAdjustment := 0.0;     // [%] 1.0 = 100% Adjustment factor to adjust dD/dT compensation torque
+        #winderConfig.torquePrecontrolConfig.additiveTorque := 0.0;         // [Nm or Lbf ft] Additive torque value on drive side for rewinders
+        #winderConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #winderConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #winderConfig.technologyControllerConfig.tensionReference := 0.0;
+        // //actual value
+        // #winderConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        // #winderConfig.technologyControllerConfig.deadBand   := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        // //P-part
+        // #winderConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        // #winderConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        // #winderConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        // #winderConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        // #winderConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        // //I-part
+        // #winderConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        // #winderConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        // #winderConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        // #winderConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        // //D-part
+        // #winderConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        // #winderConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        // //output
+        // #winderConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        // #winderConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        // #winderConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        // #winderConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        //type
+        #winderConfig.diamConfig.useLineAxisActualValues := TRUE;
+        #winderInput.typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_INTEGRAL";      // [0-5] 0=Diamcalcdivision,1=Diamcalcaddition,2=Diamcalcintegral,3=DiamExternal,4=WebLength,5=Diamcalcpos
+        //dimensions
+        #winderConfig.diamConfig.minDia := 0.075;    // [m / in] Minimum diameter Allowed
+        #winderConfig.diamConfig.maxDia := 0.475;    // [m / in] maximum diameter Allowed
+        //limits
+        #winderConfig.diamConfig.minLineVelocity := 0.5;   // [LU / min] Minimum line velocity for calculation
+        #winderConfig.diamConfig.minShaftSpeed := 2.0;     // [rpm] Minimum shaft speed for calculation
+        //filters
+        #winderConfig.diamConfig.lineFilterTime := 20.0;    // [ms] Filter time
+        #winderConfig.diamConfig.shaftFilterTime := 20.0;   // [ms] Filter time
+        #winderConfig.diamConfig.diameterFilterTime := 0.0;    // [ms] Filter time
+        //settings
+        #winderConfig.diamConfig.diameterSetValue := 0.475;     // [m or in] diameter Set Value
+        #winderConfig.diamConfig.webThickness := 1.275e-4;   // [m]
+        //calculation
+        #winderConfig.diamConfig.measuringRevolutionCount := 4.0;     // [rev] Shaft Revolutions counts  for diamcalintegral
+        #winderConfig.diamConfig.firstDiameterOutput := 0.5;
+        #winderConfig.diamConfig.diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #winderConfig.diamConfig.shaftModLength := 360.0;
+        #winderConfig.diamConfig.lineModLength := 1.0;
+        #winderConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #winderConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #winderConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+// functionality: initialization of an winder instance of winder indirect tension speed adapt
+    #winderInput.enable := FALSE;
+    #winderInput.speedMatch := FALSE;
+    #winderInput.cntrlEnable := FALSE;
+    #winderInput.jogPos := FALSE;
+    #winderInput.jogNeg := FALSE;
+    #winderInput.additionalVelocity := 0.0;
+    #winderInput.winderAxis := 0;
+    #winderInput.typeOfWinder := "LCON_TYPE_OF_WINDER_REWIND_FROM_ABOVE"; //[0-3] 0=RfA, 1=RfB, 2=UfA, 3=Ufb
+    #winderInput.controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION_SPEED_ADAPT";  
+    #winderInput.holdDiameter := FALSE;
+    #winderInput.setDiameter := FALSE;
+    #winderInput.CntrlSetpoint := 10.0;
+    // #winderInput.tCycle        := 0.0; //is set in PostServo
+        #winderConfig.positionControlled := FALSE;
+        #winderConfig.axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #winderConfig.getAxisConfigAtStart := TRUE;
+        #winderConfig.torquePrecontrolConfig.loadGear.numerator := 1;   // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.torquePrecontrolConfig.loadGear.denominator := 1; // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.overrideVelocity := 10.0; //[LU/min]
+        #winderConfig.maxVelocity := 100.0; //[LU/min]
+        #winderConfig.jogVelocity := 3.0; //[LU/min]
+        #winderConfig.unitConfiguration.metricUnits := TRUE;
+        #winderConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]       // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.unitConfiguration.axisVelocityUnit := 1083;   // [1/min]  // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #winderConfig.winderDynamics.jogDynamics.acceleration := -1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.deceleration := -1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.jerk := 0.0;   // [TOUnit]
+        #winderConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #winderConfig.winderDynamics.operationDynamics.acceleration := -1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.deceleration := -1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #winderConfig.winderDynamics.syncDynamics.acceleration := -1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.deceleration := -1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.jerk := 0.0;        // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.abortAcceleration := FALSE;
+        #winderConfig.winderDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #winderConfig.winderDynamics.sDynamics.deceleration := -1.0;  // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.jerk := 0.0;          // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.abortAcceleration := TRUE;
+        #winderConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0;
+        #winderConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0;
+        #winderConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+            #winderConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #winderConfig.torquePrecontrolConfig.frictionAdjustment := 0.0;
+            #winderConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 5.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.0137;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.MaterialWidth := 0.035;
+            #winderConfig.torquePrecontrolConfig.MaterialDensity := 1441.7;     // [kg/m^3 or lb/ft^3]
+            #winderConfig.torquePrecontrolConfig.MaterialFillFactor := 1.0;     // [%] 1.0 = 100 Percent of Product fill (i.e. strip/gap ratio on traverse winder)
+            #winderConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #winderConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #winderConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #winderConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #winderConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;     // [%] 1.0 = 100% Adjustment factor to adjust tension torque precontrol
+        #winderConfig.torquePrecontrolConfig.dDdTAdjustment := 0.0;     // [%] 1.0 = 100% Adjustment factor to adjust dD/dT compensation torque
+        #winderConfig.torquePrecontrolConfig.additiveTorque := 0.0;         // [Nm or Lbf ft] Additive torque value on drive side for rewinders
+        #winderConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #winderConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #winderConfig.technologyControllerConfig.tensionReference := 0.0;
+        //actual value
+        #winderConfig.technologyControllerConfig.filterTime := 0.0;    // [ms] T-PID - actual value fitler time constant
+        #winderConfig.technologyControllerConfig.deadBand   := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        //P-part
+        #winderConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        #winderConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        #winderConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        #winderConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        #winderConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        //I-part
+        #winderConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        #winderConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        #winderConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        #winderConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        //D-part
+        #winderConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        #winderConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        //output
+        #winderConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        #winderConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        #winderConfig.technologyControllerConfig.upperLimit := 2.0;     // [-] T-PID - Controller output upper limit
+        #winderConfig.technologyControllerConfig.lowerLimit := -2.0;    // [-] T-PID - Controller output lower limit torque control signals
+        //type
+        #winderConfig.diamConfig.useLineAxisActualValues := FALSE;
+        #winderInput.typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_INTEGRAL";      // [0-5] 0=Diamcalcdivision,1=Diamcalcaddition,2=Diamcalcintegral,3=DiamExternal,4=WebLength,5=Diamcalcpos
+        //dimensions
+        #winderConfig.diamConfig.minDia := 0.075;    // [m / in] Minimum diameter Allowed
+        #winderConfig.diamConfig.maxDia := 0.475;    // [m / in] maximum diameter Allowed
+        //limits
+        #winderConfig.diamConfig.minLineVelocity := 0.5;   // [LU / min] Minimum line velocity for calculation
+        #winderConfig.diamConfig.minShaftSpeed := 2.0;     // [rpm] Minimum shaft speed for calculation
+        //filters
+        #winderConfig.diamConfig.lineFilterTime := 20.0;    // [ms] Filter time
+        #winderConfig.diamConfig.shaftFilterTime := 20.0;   // [ms] Filter time
+        #winderConfig.diamConfig.diameterFilterTime := 0.0;    // [ms] Filter time
+        //settings
+        #winderConfig.diamConfig.diameterSetValue := 0.475;     // [m or in] diameter Set Value
+        #winderConfig.diamConfig.webThickness := 1.275e-4;   // [m]
+        //calculation
+        #winderConfig.diamConfig.measuringRevolutionCount := 4.0;     // [rev] Shaft Revolutions counts  for diamcalintegral
+        #winderConfig.diamConfig.firstDiameterOutput := 0.5;
+        #winderConfig.diamConfig.diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #winderConfig.diamConfig.shaftModLength := 360.0;
+        #winderConfig.diamConfig.lineModLength := 1.0;
+        #winderConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #winderConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #winderConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+// functionality: initialization of an winder instance for control mode "Tension speed adaption"
+    #winderInput.enable := FALSE;
+    #winderInput.speedMatch := FALSE;
+    #winderInput.cntrlEnable := FALSE;
+    #winderInput.jogPos := FALSE;
+    #winderInput.jogNeg := FALSE;
+    #winderInput.additionalVelocity := 0.0;
+    #winderInput.winderAxis := "winder";
+    #winderInput.typeOfWinder := "LCON_TYPE_OF_WINDER_UNWIND_FROM_ABOVE"; //[0-3] 0=RfA, 1=RfB, 2=UfA, 3=Ufb
+    #winderInput.controlMode := "LCON_CONTROL_MODE_TENSION_SPEED";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant
+    #winderInput.holdDiameter := FALSE;
+    #winderInput.setDiameter := FALSE;
+    #winderInput.CntrlSetpoint := 50.0;
+    #winderInput.tCycle := 0.0; //is set in PostServo
+        #winderConfig.positionControlled := FALSE;
+        #winderConfig.axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #winderConfig.getAxisConfigAtStart := TRUE;
+        #winderConfig.torquePrecontrolConfig.loadGear.numerator := 1;   // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.torquePrecontrolConfig.loadGear.denominator := 1; // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        // #winderConfig.overrideVelocity := 0.0; //[LU/min]
+        #winderConfig.maxVelocity := 100.0; //[LU/min]
+        #winderConfig.jogVelocity := 3.0; //[LU/min]
+        #winderConfig.unitConfiguration.metricUnits := TRUE;
+        #winderConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]       // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.unitConfiguration.axisVelocityUnit := 1521;   // [°/s]    // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #winderConfig.winderDynamics.jogDynamics.acceleration := LREAL_TO_REAL(360.0 * 0.65);  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.deceleration := LREAL_TO_REAL(360.0 * 0.65);  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.jerk := LREAL_TO_REAL(360 * 1.3);   // [TOUnit]
+        #winderConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #winderConfig.winderDynamics.operationDynamics.acceleration := 10 * #winderConfig.winderDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.deceleration := 10 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #winderConfig.winderDynamics.syncDynamics.acceleration := 0.5 * #winderConfig.winderDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.deceleration := 0.5 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.jerk := 0.5 * #winderConfig.winderDynamics.jogDynamics.jerk;        // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.abortAcceleration := FALSE;
+        #winderConfig.winderDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #winderConfig.winderDynamics.sDynamics.deceleration := 2.0 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.jerk := 2.0 * #winderConfig.winderDynamics.jogDynamics.jerk;          // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.abortAcceleration := TRUE;
+        #winderConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0; //[relative]
+        #winderConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0; //[relative]
+        #winderConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS    // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+            #winderConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #winderConfig.torquePrecontrolConfig.frictionAdjustment := 1.0;
+            #winderConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 0.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.00;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.MaterialWidth := 0.035;
+            #winderConfig.torquePrecontrolConfig.MaterialDensity := 1441.7;     // [kg/m^3 or lb/ft^3]
+            #winderConfig.torquePrecontrolConfig.MaterialFillFactor := 1.0;     // [%] 1.0 = 100 Percent of Product fill (i.e. strip/gap ratio on traverse winder)
+            #winderConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #winderConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #winderConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #winderConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #winderConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;     // [%] 1.0 = 100% Adjustment factor to adjust tension torque precontrol
+        #winderConfig.torquePrecontrolConfig.dDdTAdjustment := 0.0;     // [%] 1.0 = 100% Adjustment factor to adjust dD/dT compensation torque
+        #winderConfig.torquePrecontrolConfig.additiveTorque := 0.0;         // [Nm or Lbf ft] Additive torque value on drive side for rewinders
+        #winderConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #winderConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #winderConfig.technologyControllerConfig.tensionReference := 0.0;
+        //actual value
+        #winderConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        #winderConfig.technologyControllerConfig.deadBand := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        //P-part
+        #winderConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        #winderConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        #winderConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        #winderConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        #winderConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        //I-part
+        #winderConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        #winderConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        #winderConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        #winderConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        //D-part
+        #winderConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        #winderConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        //output
+        #winderConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        #winderConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        #winderConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        #winderConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        //type
+        #winderConfig.diamConfig.useLineAxisActualValues := TRUE;
+        #winderInput.typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_POSITION";      // [0-5] 0=Diamcalcdivision,1=Diamcalcaddition,2=Diamcalcintegral,3=DiamExternal,4=WebLength,5=Diamcalcpos
+        //dimensions
+        #winderConfig.diamConfig.minDia := 0.075;    // [m / in] Minimum diameter Allowed
+        #winderConfig.diamConfig.maxDia := 0.475;    // [m / in] maximum diameter Allowed
+        //limits
+        #winderConfig.diamConfig.minLineVelocity := 0.5;   // [LU / min] Minimum line velocity for calculation
+        #winderConfig.diamConfig.minShaftSpeed := 2.0;     // [rpm] Minimum shaft speed for calculation
+        //filters
+        #winderConfig.diamConfig.lineFilterTime := 20.0;    // [ms] Filter time
+        #winderConfig.diamConfig.shaftFilterTime := 20.0;   // [ms] Filter time
+        #winderConfig.diamConfig.diameterFilterTime := 0.0;    // [ms] Filter time
+        //settings
+        #winderConfig.diamConfig.diameterSetValue := 0.475;     // [m or in] diameter Set Value
+        #winderConfig.diamConfig.webThickness := 1.275e-4;   // [m]
+        //calculation
+        #winderConfig.diamConfig.measuringRevolutionCount := 4.0;     // [rev] Shaft Revolutions counts  for diamcalintegral
+        #winderConfig.diamConfig.firstDiameterOutput := 0.5;
+        #winderConfig.diamConfig.diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #winderConfig.diamConfig.shaftModLength := 360.0;
+        #winderConfig.diamConfig.lineModLength := 1.0;
+        #winderConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #winderConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #winderConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+// functionality: initialization of an winder instance for control mode "Tension torque adaption"
+    #winderInput.enable := FALSE;
+    #winderInput.speedMatch := FALSE;
+    #winderInput.cntrlEnable := FALSE;
+    #winderInput.jogPos := FALSE;
+    #winderInput.jogNeg := FALSE;
+    #winderInput.additionalVelocity := 0.0;
+    #winderInput.winderAxis := "winder";
+    #winderInput.typeOfWinder := "LCON_TYPE_OF_WINDER_UNWIND_FROM_ABOVE"; //[0-3] 0=RfA, 1=RfB, 2=UfA, 3=Ufb
+    #winderInput.controlMode := "LCON_CONTROL_MODE_TENSION_TORQUE";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant
+    #winderInput.holdDiameter := FALSE;
+    #winderInput.setDiameter := FALSE;
+    #winderInput.CntrlSetpoint := 50.0;
+    #winderInput.tCycle := 0.0; //is set in PostServo
+        #winderConfig.positionControlled := FALSE;
+        #winderConfig.axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #winderConfig.getAxisConfigAtStart := True;
+        #winderConfig.torquePrecontrolConfig.loadGear.numerator := 1;   // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.torquePrecontrolConfig.loadGear.denominator := 1; // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.overrideVelocity := 10.0; //[LU/min]
+        #winderConfig.maxVelocity := 100.0; //[LU/min]
+        #winderConfig.jogVelocity := 3.0; //[LU/min]
+        #winderConfig.unitConfiguration.metricUnits := TRUE;
+        #winderConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]       // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.unitConfiguration.axisVelocityUnit := 1521;   // [°/s]    // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #winderConfig.winderDynamics.jogDynamics.acceleration := LREAL_TO_REAL(360 * 0.65);  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.deceleration := LREAL_TO_REAL(360 * 0.65);  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.jerk := LREAL_TO_REAL(360 * 1.3);   // [TOUnit]
+        #winderConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #winderConfig.winderDynamics.operationDynamics.acceleration := 10 * #winderConfig.winderDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.deceleration := 10 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #winderConfig.winderDynamics.syncDynamics.acceleration := 0.5 * #winderConfig.winderDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.deceleration := 0.5 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.jerk := 0.5 * #winderConfig.winderDynamics.jogDynamics.jerk;        // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.abortAcceleration := FALSE;
+        #winderConfig.winderDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #winderConfig.winderDynamics.sDynamics.deceleration := 2.0 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.jerk := 2.0 * #winderConfig.winderDynamics.jogDynamics.jerk;          // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.abortAcceleration := TRUE;
+        #winderConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0; //[relative]
+        #winderConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0; //[relative]
+        #winderConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS    // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+            #winderConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #winderConfig.torquePrecontrolConfig.frictionAdjustment := 1.0;
+            #winderConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 0.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.00;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.MaterialWidth := 0.035;
+            #winderConfig.torquePrecontrolConfig.MaterialDensity := 1441.7;     // [kg/m^3 or lb/ft^3]
+            #winderConfig.torquePrecontrolConfig.MaterialFillFactor := 1.0;     // [%] 1.0 = 100 Percent of Product fill (i.e. strip/gap ratio on traverse winder)
+            #winderConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #winderConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #winderConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #winderConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #winderConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;     // [%] 1.0 = 100% Adjustment factor to adjust tension torque precontrol
+        #winderConfig.torquePrecontrolConfig.dDdTAdjustment := 0.0;     // [%] 1.0 = 100% Adjustment factor to adjust dD/dT compensation torque
+        #winderConfig.torquePrecontrolConfig.additiveTorque := 0.0;         // [Nm or Lbf ft] Additive torque value on drive side for rewinders
+        #winderConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #winderConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #winderConfig.technologyControllerConfig.tensionReference := 0.0;
+        //actual value
+        #winderConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        #winderConfig.technologyControllerConfig.deadBand := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        //P-part
+        #winderConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        #winderConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        #winderConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        #winderConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        #winderConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        //I-part
+        #winderConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        #winderConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        #winderConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        #winderConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        //D-part
+        #winderConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        #winderConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        //output
+        #winderConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        #winderConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        #winderConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        #winderConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        //type
+        #winderConfig.diamConfig.useLineAxisActualValues := TRUE;
+        #winderInput.typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_POSITION";      // [0-5] 0=Diamcalcdivision,1=Diamcalcaddition,2=Diamcalcintegral,3=DiamExternal,4=WebLength,5=Diamcalcpos
+        //dimensions
+        #winderConfig.diamConfig.minDia := 0.075;    // [m / in] Minimum diameter Allowed
+        #winderConfig.diamConfig.maxDia := 0.475;    // [m / in] maximum diameter Allowed
+        //limits
+        #winderConfig.diamConfig.minLineVelocity := 0.5;   // [LU / min] Minimum line velocity for calculation
+        #winderConfig.diamConfig.minShaftSpeed := 2.0;     // [rpm] Minimum shaft speed for calculation
+        //filters
+        #winderConfig.diamConfig.lineFilterTime := 20.0;    // [ms] Filter time
+        #winderConfig.diamConfig.shaftFilterTime := 20.0;   // [ms] Filter time
+        #winderConfig.diamConfig.diameterFilterTime := 0.0;    // [ms] Filter time
+        //settings
+        #winderConfig.diamConfig.diameterSetValue := 0.475;     // [m or in] diameter Set Value
+        #winderConfig.diamConfig.webThickness := 1.275e-4;   // [m]
+        //calculation
+        #winderConfig.diamConfig.measuringRevolutionCount := 4.0;     // [rev] Shaft Revolutions counts  for diamcalintegral
+        #winderConfig.diamConfig.firstDiameterOutput := 0.5;
+        #winderConfig.diamConfig.diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #winderConfig.diamConfig.shaftModLength := 360.0;
+        #winderConfig.diamConfig.lineModLength := 1.0;
+        #winderConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #winderConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #winderConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #winderConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+// functionality: initialization of an winder instance of winder vconstant
+    #winderInput.enable := FALSE;
+    #winderInput.speedMatch := FALSE;
+    #winderInput.cntrlEnable := FALSE;
+    #winderInput.jogPos := FALSE;
+    #winderInput.jogNeg := FALSE;
+    #winderInput.additionalVelocity := 0.0;
+    #winderInput.winderAxis := 0;
+    #winderInput.typeOfWinder := "LCON_TYPE_OF_WINDER_REWIND_FROM_ABOVE"; //[0-3] 0=RfA, 1=RfB, 2=UfA, 3=Ufb
+    #winderInput.controlMode := "LCON_CONTROL_MODE_V_CONSTANT";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant
+    #winderInput.holdDiameter := FALSE;
+    #winderInput.setDiameter := FALSE;
+    // #winderInput.CntrlSetpoint := 0.0;
+    // #winderInput.tCycle        := 0.0; //is set in PostServo
+        #winderConfig.positionControlled := TRUE;
+        #winderConfig.axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #winderConfig.getAxisConfigAtStart := TRUE;
+        #winderConfig.torquePrecontrolConfig.loadGear.numerator := 1;   // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.torquePrecontrolConfig.loadGear.denominator := 1; // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        // #winderConfig.overrideVelocity  := 10.0; //[LU/min]
+        #winderConfig.maxVelocity := 100.0; //[LU/min]
+        #winderConfig.jogVelocity := 3.0; //[LU/min]
+        #winderConfig.unitConfiguration.metricUnits := TRUE;
+        #winderConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]       // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.unitConfiguration.axisVelocityUnit := 1521;   // [°/s]    // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+        #winderConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #winderConfig.winderDynamics.jogDynamics.acceleration := LREAL_TO_REAL(360 * 0.65);  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.deceleration := LREAL_TO_REAL(360 * 0.65);  // [TOUnit]
+        #winderConfig.winderDynamics.jogDynamics.jerk := LREAL_TO_REAL(360 * 1.3);   // [TOUnit]
+        #winderConfig.jogVelocity := 10;  //[LU/min]
+        // Operation: speedmatch, cntrlenable active
+        #winderConfig.winderDynamics.operationDynamics.acceleration := 10 * #winderConfig.winderDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.deceleration := 10 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        // Sync: Enable and Speedmatch = TRUE
+        #winderConfig.winderDynamics.syncDynamics.acceleration := 0.5 * #winderConfig.winderDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.deceleration := 0.5 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.jerk := 0.5 * #winderConfig.winderDynamics.jogDynamics.jerk;        // [TOUnit]
+        #winderConfig.winderDynamics.syncDynamics.abortAcceleration := FALSE;
+        #winderConfig.winderDynamics.syncDynamics.syncToleranceFactor := 1;
+        // S: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #winderConfig.winderDynamics.sDynamics.deceleration := 2.0 * #winderConfig.winderDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.jerk := 2.0 * #winderConfig.winderDynamics.jogDynamics.jerk;          // [TOUnit]
+        #winderConfig.winderDynamics.sDynamics.abortAcceleration := TRUE;
+        #winderConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0; //[relative]
+        #winderConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0; //[relative]
+        #winderConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS    // Only required if "#winderConfig.getAxisConfigAtStart = FALSE"
+            #winderConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #winderConfig.torquePrecontrolConfig.frictionAdjustment := 1.0;
+            #winderConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 5.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.0137;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #winderConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+            #winderConfig.torquePrecontrolConfig.MaterialWidth := 0.035;
+            #winderConfig.torquePrecontrolConfig.MaterialDensity := 1441.7;     // [kg/m^3 or lb/ft^3]
+            #winderConfig.torquePrecontrolConfig.MaterialFillFactor := 1.0;     // [%] 1.0 = 100 Percent of Product fill (i.e. strip/gap ratio on traverse winder)
+            #winderConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #winderConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #winderConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #winderConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        #winderConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;     // [%] 1.0 = 100% Adjustment factor to adjust tension torque precontrol
+        #winderConfig.torquePrecontrolConfig.dDdTAdjustment := 0.0;     // [%] 1.0 = 100% Adjustment factor to adjust dD/dT compensation torque
+        #winderConfig.torquePrecontrolConfig.additiveTorque := 0.0;         // [Nm or Lbf ft] Additive torque value on drive side for rewinders
+        // #winderConfig.technologyControllerConfig.setNominalValue  := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        // #winderConfig.technologyControllerConfig.setRampTime      := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        // #winderConfig.technologyControllerConfig.tensionReference := 0.0;
+        // //actual value
+        // #winderConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        // #winderConfig.technologyControllerConfig.deadBand   := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        // //P-part
+        // #winderConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        // #winderConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        // #winderConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        // #winderConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        // #winderConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        // //I-part
+        // #winderConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        // #winderConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        // #winderConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        // #winderConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        // //D-part
+        // #winderConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        // #winderConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        // //output
+        // #winderConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        // #winderConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        // #winderConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        // #winderConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        //type
+        #winderConfig.diamConfig.useLineAxisActualValues := TRUE;
+        #winderInput.typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_ADDITION";      // [0-5] 0=Diamcalcdivision,1=Diamcalcaddition,2=Diamcalcintegral,3=DiamExternal,4=WebLength,5=Diamcalcpos
+        //dimensions
+        #winderConfig.diamConfig.minDia := 0.075;    // [m / in] Minimum diameter Allowed
+        #winderConfig.diamConfig.maxDia := 0.475;    // [m / in] maximum diameter Allowed
+        //limits
+        #winderConfig.diamConfig.minLineVelocity := 0.5;   // [LU / min] Minimum line velocity for calculation
+        #winderConfig.diamConfig.minShaftSpeed := 2.0;     // [rpm] Minimum shaft speed for calculation
+        //filters
+        #winderConfig.diamConfig.lineFilterTime := 20.0;    // [ms] Filter time
+        #winderConfig.diamConfig.shaftFilterTime := 20.0;   // [ms] Filter time
+        #winderConfig.diamConfig.diameterFilterTime := 0.0;    // [ms] Filter time
+        //settings
+        #winderConfig.diamConfig.diameterSetValue := 0.475;     // [m or in] diameter Set Value
+        #winderConfig.diamConfig.webThickness := 100.0e-6;   // [m]
+        //calculation
+        #winderConfig.diamConfig.measuringRevolutionCount := 4.0;     // [rev] Shaft Revolutions counts  for diamcalintegral
+        #winderConfig.diamConfig.firstDiameterOutput := 0.5;
+        #winderConfig.diamConfig.diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #winderConfig.diamConfig.shaftModLength := 360.0;
+        #winderConfig.diamConfig.lineModLength := 1.0;
+        // Webbreak detection not possible for control mode V-Constant
+        // #winderConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        // #winderConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        // #winderConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        // #winderConfig.webbreakDetectionConfig.delayTime := T#200ms;       // Delay time to detect webbreak
+        // #winderConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity

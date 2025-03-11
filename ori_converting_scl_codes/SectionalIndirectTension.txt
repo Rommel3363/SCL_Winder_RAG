@@ -1,0 +1,146 @@
+
+// functionality: initialization of an winder instance
+
+REGION Winder input
+    #sectionalInput.enable := FALSE;
+    #sectionalInput.speedMatch := FALSE;
+    #sectionalInput.CntrlEnable := FALSE;
+    #sectionalInput.jogPos := FALSE;
+    #sectionalInput.jogNeg := FALSE;
+    #sectionalInput.additionalVelocity := 0.0;
+    #sectionalInput.axis := 0;
+    #sectionalInput.draw := 1.0;
+    #sectionalInput.typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL"; //[0-1] 0=PULL 1=PUSH
+    #sectionalInput.controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant
+    #sectionalInput.CntrlSetpoint := 10.0;
+    // #winderInput.tCycle        := 0.0; //is set in PostServo
+END_REGION
+
+REGION Winder config
+    REGION General settings
+        #sectionalConfig.positionControlled := FALSE;
+        #sectionalConfig.axisCtrl := TRUE;
+        #sectionalConfig.diameter := 0.5;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #sectionalConfig.getAxisConfigAtStart := TRUE;
+        #sectionalConfig.torquePrecontrolConfig.loadGear.numerator := 1;    // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.torquePrecontrolConfig.loadGear.denominator := 1;  // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.overrideVelocity := 10.0; //[LU/min]
+        #sectionalConfig.maxVelocity := 100.0; //[LU/min]
+        #sectionalConfig.jogVelocity := 3.0; //[LU/min]
+    END_REGION
+    
+    REGION Unit configuration
+        #sectionalConfig.unitConfiguration.metricUnits := TRUE;
+        #sectionalConfig.unitConfiguration.axisTorqueUnit := 1126;   // [Nm]        // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        #sectionalConfig.unitConfiguration.axisVelocityUnit := 1083;   // [1/min]   // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+    END_REGION
+    
+    REGION Dynamic settings
+        #sectionalConfig.noOfSamplesLineVelocity := 1; // Number of samples for moving average filtering of line speed setpoint ( values <= 1: filtering disabeld)
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration := 0.65;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration := 0.65;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk := 1.3;   // [TOUnit]
+        #sectionalConfig.jogVelocity := 10;  //[LU/min]
+        
+        // Operation: speedmatch, cntrlenable active
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.acceleration := 10 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.deceleration := 10 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
+        
+        // Sync: Enable and Speedmatch = TRUE
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.acceleration := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.acceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.deceleration := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.jerk := 0.5 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk;        // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.abortAcceleration := FALSE;
+        #sectionalConfig.SectionalDriveDynamics.syncDynamics.syncToleranceFactor := 1;
+        
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.deceleration := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.deceleration;  // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.jerk := 2.0 * #sectionalConfig.SectionalDriveDynamics.jogDynamics.jerk;          // [TOUnit]
+        #sectionalConfig.SectionalDriveDynamics.stopDynamics.abortAcceleration := TRUE;
+    END_REGION
+    
+    REGION Torque precontrol settings
+        #sectionalConfig.torquePrecontrolConfig.upperTorqueLimit := 1.0;
+        #sectionalConfig.torquePrecontrolConfig.lowerTorqueLimit := -1.0;
+        #sectionalConfig.torquePrecontrolConfig.referenceTorque := 1.2;   // Parameter 2003 in the SINAMICS // Only required if "#sectionalConfig.getAxisConfigAtStart = FALSE"
+        REGION Friction torque
+            #sectionalConfig.torquePrecontrolConfig.useSetValForFrictionComp := FALSE;
+            #sectionalConfig.torquePrecontrolConfig.frictionAdjustment := 1.0;
+            #sectionalConfig.torquePrecontrolConfig.sizeOfArray := 10;
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[0] := 5.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[0] := 0.0137;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[1] := 10.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[1] := 0.0138;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[2] := 20.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[2] := 0.0143;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[3] := 50.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[3] := 0.0150;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[4] := 100.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[4] := 0.0165;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[5] := 150.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[5] := 0.0178;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[6] := 200.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[6] := 0.0191;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[7] := 250.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[7] := 0.0203;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[8] := 300.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[8] := 0.0214;  // [Nm]
+            #sectionalConfig.torquePrecontrolConfig.xn_speedValues.values[9] := 500.0;     // [RPM]
+            #sectionalConfig.torquePrecontrolConfig.yn_torqueValues.values[9] := 0.0252;  // [Nm]
+        END_REGION
+        REGION Acceleration torque
+            #sectionalConfig.torquePrecontrolConfig.JFixed := LREAL_TO_REAL(0.0343 - 0.00151);     // [kg/m^2 or lb-ft/sec^2] Fixed Mechanical Inertia
+            #sectionalConfig.torquePrecontrolConfig.JMandrel := 0.0;     // [kg/m^2 or lb-ft/sec^2] Inertia of the mandrel
+            #sectionalConfig.torquePrecontrolConfig.JMotor := 0.001510;     // [kg/m^2 or lb-ft/sec^2] Inertia of the motor
+            #sectionalConfig.torquePrecontrolConfig.accelerationAdjustment := 1.0;
+        END_REGION
+        #sectionalConfig.torquePrecontrolConfig.tensionAdjustment := 1.0;
+        
+    END_REGION
+    
+    REGION TPID settings
+        
+        #sectionalConfig.technologyControllerConfig.setNominalValue := 100.0;   // [-] T-PID - Normalisation value for setpoint RFG
+        #sectionalConfig.technologyControllerConfig.setRampTime := 3000.0;  // [ms] T-PID - Ramp up time for setpoint RFG  PID settings
+        #sectionalConfig.technologyControllerConfig.tensionReference := 0.0;
+        // //actual value
+        // #sectionalConfig.technologyControllerConfig.filterTime := 10.0;    // [ms] T-PID - actual value fitler time constant
+        // #sectionalConfig.technologyControllerConfig.deadBand   := 0.0;     // [-] T-PID - Deadband parameter (width OF the band is double this value)
+        
+        // //P-part
+        // #sectionalConfig.technologyControllerConfig.KpAdaptionValue := 0.0;     // [-] T-PID - Kp-Adaption will be made on the base of this value
+        // #sectionalConfig.technologyControllerConfig.x1 := 0.0;     // [-] T-PID - Abscissa-1 for KP-adaption(1)
+        // #sectionalConfig.technologyControllerConfig.Kp1 := 0.3;     // [-] T-PID - KP-adaption point(1)
+        // #sectionalConfig.technologyControllerConfig.x2 := 0.0;     // [-] T-PID - Abscissa-2 for KP-adaption(2)if identical to x1, adaption disabled
+        // #sectionalConfig.technologyControllerConfig.Kp2 := 0.0;     // [-] T-PID - KP-adaption point(2)  RFG Limiting settings
+        
+        // //I-part
+        // #sectionalConfig.technologyControllerConfig.setIntChannel := FALSE;   // [-] T-PID - Set integrator channel to intSetValue
+        // #sectionalConfig.technologyControllerConfig.intSetValue := 0.0;     // [-] T-PID - Integrator set value
+        // #sectionalConfig.technologyControllerConfig.holdIntChannel := false;   // [-] True:T-PID Hold (freeze) integrator False:T-PID-Normal Integrator Operation
+        // #sectionalConfig.technologyControllerConfig.integTime := 0.0;  // [ms] T-PID - Integration time constant
+        
+        // //D-part
+        // #sectionalConfig.technologyControllerConfig.derivTime := 0.0;     // [ms] T-PID - Differentiation time constant
+        // #sectionalConfig.technologyControllerConfig.derivControlMode := false;   // [-] T-PID - TRUE = D-Action acts in the actual value channel
+        
+        // //output
+        // #sectionalConfig.technologyControllerConfig.limRampTime := 1000.0;  // [ms] T-PID - Ramp-up time for pid controller output  RFG Setpoint settings
+        // #sectionalConfig.technologyControllerConfig.outValueFactor := 1.0;  // [-] T-PID - Output scaling factor - for inversion  Output limits controller
+        // #sectionalConfig.technologyControllerConfig.upperLimit := 20.0;     // [-] T-PID - Controller output upper limit
+        // #sectionalConfig.technologyControllerConfig.lowerLimit := -20.0;    // [-] T-PID - Controller output lower limit torque control signals
+        
+    END_REGION
+    
+    REGION Webbreak settings
+        #sectionalConfig.webbreakDetectionConfig.enableDetection := FALSE;
+        #sectionalConfig.webbreakDetectionConfig.lowerLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.upperLimitError := 0.5;     // [Nm] Deviation from torque setpoint
+        #sectionalConfig.webbreakDetectionConfig.delayTime := T#200ms; // Delay time to detect webbreak
+        #sectionalConfig.webbreakDetectionConfig.minLineVelocity := 5.0;     // [LU/min] Minimum line velocity
+    END_REGION
+END_REGION

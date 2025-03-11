@@ -1,0 +1,33 @@
+
+// This is an example to set the inputs of the winder function block.  The code must be adapted according the user automation logic.
+
+REGION ENABLE WINDER (1)
+  // TRUE: Enable function block. With rising edge a validation of parameter is done and communication with drive is started
+  // FALSE: Disable the function block
+  #winderInput.enable := #enableWinder;
+END_REGION
+
+REGION SET DIAMETER (2)
+  // TRUE: Set diameter to the value in "winderConfig.diamConfig.diameterSetValue"
+  // FALSE: Internal diameter calculation is active
+  #winderInput.setDiameter := #setDiameter;
+END_REGION
+
+REGION SPEED MATCH (3)
+  //TRUE: Enable web velocity setpoint ("lineAxisMotionVector"). The drive will synchronize up to web velocity using syncronization dynamics. If the velocity is reached the output "inSync" will become TRUE.
+  //FALSE: Drive will decelerate to standstill using stop dynamics
+  #winderInput.speedMatch := #speedMatch AND #winderOutput.busy AND #winderOutput.active;
+END_REGION
+
+REGION WEB TENSION (4)
+  //TRUE: Enable web tension control (enable torque limits, dancer position setpoint etc.) 
+  #winderInput.cntrlEnable := #ctrlEnable AND #winderOutput.inSync AND NOT #winderOutput.error;
+END_REGION
+
+REGION OUTPUTS
+  #busy := #winderOutput.busy;
+  #ctrlBusy := #winderOutput.ctrlBusy;
+  #inSync := #winderOutput.inSync;
+  #error := #winderOutput.error;
+  #errorID := #winderOutput.errorID;
+END_REGION

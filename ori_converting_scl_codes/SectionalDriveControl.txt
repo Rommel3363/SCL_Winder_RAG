@@ -1,0 +1,27 @@
+
+// set the inputs of the Sectioal Drive function block.  The code must be adapted according the user automation logic.
+
+REGION ENABLE SECTIONAL DRIVE (1)
+  // TRUE: Enable function block. With rising edge a validation of parameter is done and communication with drive is started
+  // FALSE: Disable the function block
+  #sectionalDriveInput.enable := #enableSectionalDrive;
+END_REGION
+
+REGION SPEED MATCH (2)
+  //TRUE: Enable web velocity setpoint ("lineAxisMotionVector"). The drive will synchronize up to web velocity using syncronization dynamics. If the velocity is reached the output "inSync" will become TRUE.
+  //FALSE: Drive will decelerate to standstill using stop dynamics
+  #sectionalDriveInput.speedMatch := #speedMatch AND #sectionalDriveOutput.busy AND #sectionalDriveOutput.active;
+END_REGION
+
+REGION WEB TENSION (3)
+  //TRUE: Enable web tension control (enable torque limits, dancer position setpoint etc.) 
+  #sectionalDriveInput.CntrlEnable := #ctrlEnable AND #sectionalDriveOutput.inSync AND NOT #sectionalDriveOutput.error;
+END_REGION
+
+REGION OUTPUTS
+  #busy := #sectionalDriveOutput.busy;
+  #ctrlBusy := #sectionalDriveOutput.ctrlBusy;
+  #inSync := #sectionalDriveOutput.inSync;
+  #error := #sectionalDriveOutput.error;
+  #errorID := #sectionalDriveOutput.errorID;
+END_REGION
