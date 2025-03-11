@@ -1,15 +1,11 @@
 (/*
-This is a program to control the winder function block and operate the line axis
+This is a program to control the winder function block and operate the line axis这对吗？？
 */)
   // Reset active axis error
   // Reset error of  winder axis
   "InstResetWinder"(Axis    := "winder",
                        Execute := "resetError",
                        Restart := FALSE);
-  // Reset error of bottom winder axis
-  "InstResetBottomWinder"(Axis    := "winderBottom",
-                          Execute := "resetError",
-                          Restart := FALSE);
   // Reset error of line axis
   "InstResetLine"(Axis    := "line",
                   Execute := "resetError",
@@ -27,10 +23,6 @@ This is a program to control the winder function block and operate the line axis
   "InstEnableWinderAxis"(Axis      := "winder",
                             Enable    := "enableAxes",
                             StartMode := #SPEED_CONTROLLED);
-  // Enable bottom winder axis
-  "InstEnableBottomWinderAxis"(Axis      := "winderBottom",
-                               Enable    := "enableAxes",
-                               StartMode := #SPEED_CONTROLLED);
   // Enable line axis
   "InstEnableLineAxis"(Axis      := "line",
                        Enable    := "enableAxes",
@@ -58,15 +50,8 @@ This is a program to control the winder function block and operate the line axis
                            speedMatch   := "enableWinder",
                            //ctrlEnable   := "enableCtrlWinder", // Input is written above,
                            setDiameter  := "setDiameter",
-                           winderInput  := "LConSMC_Data".WinderInput["_WINDER"],
-                           winderOutput := "LConSMC_Data".WinderOutput["_WINDER"]);
-  // Control bottom winder - Indirect tension control
-    "InstBottomWinderControl"(enableWinder := "enableWinder",
-                              speedMatch   := "enableWinder",
-                              ctrlEnable   := "enableCtrlWinderDown",
-                              setDiameter  := "setDiameter",
-                              winderInput  := "LConSMC_Data".WinderInput["BOTTOM_WINDER"],
-                              winderOutput := "LConSMC_Data".WinderOutput["BOTTOM_WINDER"]);
+                           winderInput  := "LConSMC_Data".WinderInput["WINDER"],
+                           winderOutput := "LConSMC_Data".WinderOutput["WINDER"]);
   // Add LConExample_WinderControl FB for further winders
   // Example for sectional drive control function block
   // The function block must be adapted by the user according to the required automation logic
@@ -110,33 +95,12 @@ This is a program to control the winder function block and operate the line axis
                                      torqueOutValues       := "LConSMC_Data".WinderConfig["_WINDER"].torquePrecontrolConfig.yn_torqueValues,
                                      speedOutValues        := "LConSMC_Data".WinderConfig["_WINDER"].torquePrecontrolConfig.xn_speedValues,
                                      axis                  := "winder");
-  // Record friction measurement for bottom winder
-  "InstFrictionMeasurementWinderDown"(execute               := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.execute,
-                                      abort                 := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.abort,
-                                      warmUpTime            := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.warmUpTime,
-                                      rampTime              := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.rampTime,
-                                      noOfMeasurementPoints := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.noOfMeasurementPoints,
-                                      sizeOfArray           := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.sizeOfArray,
-                                      maxSpeed              := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.maxSpeed,
-                                      speedValues           := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.speedValues,
-                                      measurementDelayTime  := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.measurementDelayTime,
-                                      done                  => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.done,
-                                      valid                 => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.valid,
-                                      aborted               => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.aborted,
-                                      busy                  => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.busy,
-                                      error                 => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.error,
-                                      subfunctionState      => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.subfunctionState,
-                                      status                => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.status,
-                                      torqueOutValues       := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"].torquePrecontrolConfig.yn_torqueValues,
-                                      speedOutValues        := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"].torquePrecontrolConfig.xn_speedValues,
-                                      axis                  := "winderBottom");
 (/*
 This is an example program to call the winder function block and operate the line axis
 */)
   // Read cycle time of calling OB
   IF #Initial_Call THEN
-    "LConSMC_Data".WinderInput["_WINDER"].tCycle     := UDINT_TO_REAL(#cycleTime / 1000000);                 // Convert unit: [ns] --> [ms]
-    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].tCycle  := "LConSMC_Data".WinderInput["_WINDER"].tCycle;
+    "LConSMC_Data".WinderInput["WINDER"].tCycle     := UDINT_TO_REAL(#cycleTime / 1000000);                 // Convert unit: [ns] --> [ms]
     "LConSMC_Data".sectionalInput[1].tCycle             := "LConSMC_Data".WinderInput["_WINDER"].tCycle;
   END_IF;
   // Leading value interconnection
@@ -149,32 +113,21 @@ This is an example program to call the winder function block and operate the lin
   #tempLineActPos := "line".ActualPosition * "LConSMC_Data".lengthConversion;           // Convert unit to [m]
   #tempLineActVel := "line".ActualVelocity * "LConSMC_Data".velocityConversion;         // Convert unit to [m/min]
     // Forward temporary variables to winder interface
-    "LConSMC_Data".WinderInput["_WINDER"].lineAxisMotionVector.s := #tempLinePosition;
-    "LConSMC_Data".WinderInput["_WINDER"].lineAxisMotionVector.v := #tempLineVelocity;
-    "LConSMC_Data".WinderInput["_WINDER"].lineAxisMotionVector.a := #tempLineAcceleration;
-    "LConSMC_Data".WinderInput["_WINDER"].lineAxisActualValues.s := #tempLineActPos;
-    "LConSMC_Data".WinderInput["_WINDER"].lineAxisActualValues.v := #tempLineActVel;
-    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.s := #tempLinePosition;
-    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.v := #tempLineVelocity;
-    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.a := #tempLineAcceleration;
-    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues.s := #tempLineActPos;
-    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues.v := #tempLineActVel;
+    "LConSMC_Data".WinderInput["WINDER"].lineAxisMotionVector.s := #tempLinePosition;
+    "LConSMC_Data".WinderInput["WINDER"].lineAxisMotionVector.v := #tempLineVelocity;
+    "LConSMC_Data".WinderInput["WINDER"].lineAxisMotionVector.a := #tempLineAcceleration;
+    "LConSMC_Data".WinderInput["WINDER"].lineAxisActualValues.s := #tempLineActPos;
+    "LConSMC_Data".WinderInput["WINDER"].lineAxisActualValues.v := #tempLineActVel;
     "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.s := #tempLinePosition;
     "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.v := #tempLineVelocity;
     "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.a := #tempLineAcceleration;
   // [%] Dancer actual value for TPID
-  "LConSMC_Data".WinderInput["_WINDER"].CntrlActual := "LConSMC_Linear"(x := "dancerActualPosition",
+  "LConSMC_Data".WinderInput["WINDER"].CntrlActual := "LConSMC_Linear"(x := "dancerActualPosition",
                                                                            x1 := 1995,
                                                                            y1 := 0.0,
                                                                            x2 := 16700,
                                                                            y2 := 100.0);
-  // [N] Tension actual value for TPID
-  "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlActual := "LConSMC_Linear"(x := "tensionWinderDown",
-                                                                              x1 := -27648,
-                                                                              y1 := -20.0,
-                                                                              x2 := 27648,
-                                                                              y2 := 20.0);
-  // [m] Linearization of external diameter sensor values for bottom winder
+  // [m] Linearization of external diameter sensor values for winder
   "LConSMC_Data".WinderConfig["_WINDER"].diamConfig.diameterSetValue := "LConSMC_Linear"(x := "diameterSensorWinder",
                                                                                             x1 := 0,
                                                                                             y1 := 0.41,
@@ -207,34 +160,6 @@ This is an example program to call the winder function block and operate the lin
                   diameter             := "LConSMC_Data".winderDiameter["_WINDER"],
                   winderConfig         := "LConSMC_Data".WinderConfig["_WINDER"],
                   winderDiag           := "LConSMC_Data".winderDiag["_WINDER"]
-  );
-  // Bottom winder control - Indirect tension control
-  "InstWinderDown"(enable := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].enable,
-                   speedMatch := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].speedMatch,
-                   cntrlEnable := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].cntrlEnable,
-                   jogPos := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].jogPos,
-                   jogNeg := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].jogNeg,
-                   lineAxisMotionVector := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector,
-                   lineAxisActualValues := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues,
-                   additionalVelocity := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].additionalVelocity,
-                   typeOfWinder := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].typeOfWinder,
-                   controlMode := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].controlMode,
-                   typeOfDiameterCalc := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].typeOfDiameterCalc,
-                   holdDiameter := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].holdDiameter,
-                   setDiameter := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].setDiameter,
-                   CntrlSetpoint := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlSetpoint,
-                   CntrlActual := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlActual,
-                   tCycle := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].tCycle,
-                   winderAxis := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].winderAxis,
-                   busy => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].busy,
-                   active => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].active,
-                   ctrlBusy => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].ctrlBusy,
-                   inSync => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].inSync,
-                   error => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].error,
-                   errorID => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].errorID,
-                   diameter := "LConSMC_Data".winderDiameter["BOTTOM_WINDER"],
-                   winderConfig := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"],
-                   winderDiag := "LConSMC_Data".winderDiag["BOTTOM_WINDER"]
   );
   // Kp-Adaption speed controller adaption as a function of the current diameter (*optional*)
   // Ony for SINAMICS S120 possible --> Linearization must be done in the SINAMICS
@@ -285,11 +210,11 @@ This is an example program to initialize the winder/sectional drive configuratio
     "InitSMC_KpAdaption"(kpAdaptionIn := "LConSMC_Data".kpAdaptionTop.in);
     // Initialize friction measurement configuration (*optional if measurement is used*)
     "InitSMC_FrictionMeasurement"("LConSMC_Data".frictionMeasurement["_WINDER"].in);
-    // Initialize bottom winder in indirect tension control mode
-    "InitSMC_WinderIndirectTension"(winderConfig => "LConSMC_Data".WinderConfig["BOTTOM_WINDER"],
-                                    winderInput  => "LConSMC_Data".WinderInput["BOTTOM_WINDER"]);
+    // Initialize winder in indirect tension control mode
+    "InitSMC_WinderIndirectTension"(winderConfig => "LConSMC_Data".WinderConfig["WINDER"],
+                                    winderInput  => "LConSMC_Data".WinderInput["WINDER"]);
     // Initialize friction measurement configuration (*optional if measurement is used*)
-    "InitSMC_FrictionMeasurement"("LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in);
+    "InitSMC_FrictionMeasurement"("LConSMC_Data".frictionMeasurement["WINDER"].in);
   // Initialization of sectional drive data in draw control mode
   // *Note* Just for demonstration, there is no sectional drive axis included in the project
   "InitSMC_SectionalDrawControl"(sectionalConfig => "LConSMC_Data".sectionalConfig[1],
@@ -942,7 +867,6 @@ NOTE
     #winderInput.jogPos := FALSE;
     #winderInput.jogNeg := FALSE;
     #winderInput.additionalVelocity := 0.0;
-    #winderInput.winderAxis := "winderBottom";
     #winderInput.typeOfWinder := "LCON_TYPE_OF_WINDER_REWIND_FROM_ABOVE"; //[0-3] 0=RfA, 1=RfB, 2=UfA, 3=Ufb
     #winderInput.controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION";  // [0-4] 0=DancerSpeedAdapt 1=TensionSpeedAdapt 2= TensionTorqueAdapt 3=Indiret 4 = VConstant
     #winderInput.holdDiameter := FALSE;
@@ -969,8 +893,8 @@ NOTE
         #winderConfig.winderDynamics.jogDynamics.jerk := 0.0;   // [TOUnit]
         #winderConfig.jogVelocity := 10;  //[LU/min]
         // Operation: speedmatch, cntrlenable active
-        #winderConfig.winderDynamics.operationDynamics.acceleration := LREAL_TO_REAL("winderBottom".DynamicLimits.MaxAcceleration);  // [TOUnit]
-        #winderConfig.winderDynamics.operationDynamics.deceleration := LREAL_TO_REAL("winderBottom".DynamicLimits.MaxDeceleration);  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.acceleration := LREAL_TO_REAL("winder".DynamicLimits.MaxAcceleration);  // [TOUnit]
+        #winderConfig.winderDynamics.operationDynamics.deceleration := LREAL_TO_REAL("winder".DynamicLimits.MaxDeceleration);  // [TOUnit]
         #winderConfig.winderDynamics.operationDynamics.jerk := 0.0;   // [TOUnit] no jerk limitation
         // Sync: Enable and Speedmatch = TRUE
         #winderConfig.winderDynamics.syncDynamics.acceleration := 1.0;  // [TOUnit]
