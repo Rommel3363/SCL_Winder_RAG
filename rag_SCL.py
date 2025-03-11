@@ -10,15 +10,15 @@ import numpy as np
 
 #自动分割代码段
 # 1. 加载txt文件
-with open(r"D:\coding\vector\combined_scl_codes.txt", "r") as f:
+with open(r"D:\coding\vector-cursor\cleaned_scl_codes.txt", "r", encoding='utf-8') as f:
       scl_code = f.read()
 
 # scl_code = TextLoader.load_and_split("combined_scl_codes.txt")
 
 # 2. 代码分块（按函数/逻辑块分割）
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=200,
-    chunk_overlap = 20
+    chunk_size=150,
+    chunk_overlap = 10
 )
 chunks = text_splitter.split_text(scl_code)
 
@@ -66,8 +66,8 @@ from langchain.tools.retriever import create_retriever_tool
 
 tool = create_retriever_tool(
     retriever=retriever,
-    name="retrieverSSSSSS",
-    description="SSSSSS_company_rules_Searcher",
+    name="retriever",
+    description="Winder Scl Assistant",
 )
 tools = [tool]
 memory = ConversationBufferMemory(
@@ -153,7 +153,8 @@ agent_executor = AgentExecutor(
     memory=memory, 
     verbose=True,
     handle_parsing_errors=True,
-    max_iterations=3  # 添加最大迭代次数限制
+    # handle_parsing_errors="Check the format of your response. Make sure to include 'Thought:', 'Action:', 'Action Input:', and 'Final Answer:' in the correct order.",
+    max_iterations=5  # 添加最大迭代次数限制
 )
 
 # user_query = st.chat_input(placeholder='please issue an order')
@@ -170,7 +171,8 @@ agent_executor = AgentExecutor(
 #         st.write(response["output"])
 
 # test without UI
-user_query = 'please write a SCL code for initialize the frictionmeasurement'
+user_query = 'please write a SCL code to set the friction measurement curve'
+# user_query = 'hello, who are you'
 if user_query:
     dic = dict(input=user_query)
     # response = agent_executor.invoke(dic)
