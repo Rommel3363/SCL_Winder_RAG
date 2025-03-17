@@ -17,10 +17,15 @@ with open(r"D:\coding\vector-cursor\cleaned_scl_codes.txt", "r", encoding='utf-8
 
 # 2. 代码分块（按函数/逻辑块分割）
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=150,
-    chunk_overlap = 10
+    separators='//',
+    chunk_size=1000,
+    chunk_overlap = 0
 )
 chunks = text_splitter.split_text(scl_code)
+
+for i in range(10):
+    print(chunks[i])
+    print('--------------------------------------------------------------------------')
 
 # embeddings = OpenAIEmbeddings(model='text-embedding-3-large')
 embeddings = HuggingFaceEmbeddings()
@@ -49,7 +54,7 @@ st.set_page_config(page_title="Winder_SCL_Generator", layout="wide")
 st.title("Winder SCL Generator")
 retriever = db.as_retriever(
             search_type="similarity_score_threshold",
-            search_kwargs={"k": 5, "score_threshold": 0.2},
+            search_kwargs={"k": 1, "score_threshold": 0.2},
 )
 
 msgs = StreamlitChatMessageHistory()
@@ -83,6 +88,48 @@ You can use the retriever to search for the information and answer the questions
 Maybe you can answer the questions without searching, but still you must search with the retriever.
 If you can't find the relevant information in the retriever, you can just return"Sry, I can't do that,plaese descripe it more sepecifically!"
 """
+# base_prompt_template ="""
+# {instructions}
+
+# TOOLS:
+# -----------------------------
+
+# You have access to the following tools:
+# {tools}
+
+# Any questions about SCL code, you must use the tools.
+# Any thought, any actions ALWAYS follow these exact formats.
+
+# To use a tool, you MUST use the exact format:
+
+# Thought: [your reasoning about whether to use a tool]
+# Action: [the action to take, must be one of: {tool_names}]
+# Action Input: [the input to the tool]
+# Observation: [the result of the action]
+# Thought: [your reasoning about the observation]
+# Action: [next action if needed]
+# ... (repeat as needed)
+# Final Answer: [your final response]
+
+# If you do not need to use a tool, you MUST use this exact format:
+
+# Thought: Do I need to use a tool? No
+# Final Answer: [your response here]
+
+# Remember: ALWAYS follow these exact formats. Each response must start with "Thought:" and end with a "Final Answer:".
+
+# Begin!
+
+# Previous conversation history:
+# {chat_history}
+
+# New input: {input}
+
+# {agent_scratchpad}
+# """
+
+
+# Modify the base_prompt_template to be more strict
 base_prompt_template ="""
 {instructions}
 
@@ -92,27 +139,28 @@ TOOLS:
 You have access to the following tools:
 {tools}
 
-Any questions about SCL code, you must use the tools.
+IMPORTANT: You MUST ALWAYS follow this EXACT format for EVERY response:
 
-To use a tool, you MUST use the exact format:
+1. Start with "Thought: [your reasoning]"
+2. Then EITHER:
+   - If you need to use a tool:
+     Thought: [reasoning]
+     Action: [tool name {tool_names}]
+     Action Input: [input for the tool]
+     Observation: [result]
+     (Repeat if needed)
+   - If you don't need a tool:
+     Thought: Do I need to use a tool? No
+     Final Answer: [your response]
+3. ALWAYS end with "Final Answer: [your conclusion]"
 
-Thought: [your reasoning about whether to use a tool]
-Action: [the action to take, must be one of: {tool_names}]
-Action Input: [the input to the tool]
-Observation: [the result of the action]
-Thought: [your reasoning about the observation]
-Action: [next action if needed]
-... (repeat as needed)
-Final Answer: [your final response]
-
-If you do not need to use a tool, you MUST use this exact format:
-
-Thought: Do I need to use a tool? No
-Final Answer: [your response here]
-
-Remember: ALWAYS follow these exact formats. Each response must start with "Thought:" and end with a "Final Answer:".
-
-Begin!
+EXAMPLE FORMAT:
+Thought: I need to search for information about SCL code
+Action: retriever
+Action Input: What is the standard format for SCL function?
+Observation: [Search Results]
+Thought: Based on the search results...
+Final Answer: Here is the SCL code...
 
 Previous conversation history:
 {chat_history}
@@ -154,27 +202,28 @@ agent_executor = AgentExecutor(
     verbose=True,
     handle_parsing_errors=True,
     # handle_parsing_errors="Check the format of your response. Make sure to include 'Thought:', 'Action:', 'Action Input:', and 'Final Answer:' in the correct order.",
-    max_iterations=5  # 添加最大迭代次数限制
+    max_iterations=3,  # 添加最大迭代次数限制
+    # early_stopping_method= "generate"
 )
 
-# user_query = st.chat_input(placeholder='please issue an order')
+user_query = st.chat_input(placeholder='please issue an order')
 
-# if user_query:
-#     st.session_state.messages.append({'role':'user','content':user_query})
-#     st.chat_message('user').write(user_query)
+if user_query:
+    st.session_state.messages.append({'role':'user','content':user_query})
+    st.chat_message('user').write(user_query)
 
-#     with st.chat_message("assistat"):
-#         st_cb = StreamlitCallbackHandler(st.container())
-#         config = {'callbacks':[st_cb]}
-#         response = agent_executor.invoke({'input':user_query},config=config)
-#         st.session_state.messages.append({"role":"assistat","content":response["output"]})
-#         st.write(response["output"])
+    with st.chat_message("assistat"):
+        st_cb = StreamlitCallbackHandler(st.container())
+        config = {'callbacks':[st_cb]}
+        response = agent_executor.invoke({'input':user_query},config=config)
+        st.session_state.messages.append({"role":"assistat","content":response["output"]})
+        st.write(response["output"])
 
 # test without UI
-user_query = 'please write a SCL code to set the friction measurement curve'
-# user_query = 'hello, who are you'
-if user_query:
-    dic = dict(input=user_query)
-    # response = agent_executor.invoke(dic)
-    response = agent_executor.invoke({"input":user_query})
-    print(response)
+# user_query = 'please write a SCL code to set the friction measurement curve'
+# # user_query = 'hello, who are you'
+# if user_query:
+#     dic = dict(input=user_query)
+#     # response = agent_executor.invoke(dic)
+#     response = agent_executor.invoke({"input":user_query})
+#     print(response)
