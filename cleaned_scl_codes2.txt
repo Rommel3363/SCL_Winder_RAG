@@ -1,0 +1,1561 @@
+  // Reset active axis error
+  "InstResetLine"(Axis    := "Axis",
+                  Execute := "resetError",
+                  Restart := FALSE);
+  // Enable electrical infeed 
+  "InstSinaInfeed"(EnablePrecharging := "enableElectricalInfeed",
+                   EnableInfeed      := "enableElectricalInfeed",
+                   AckFault          := "resetError",
+                   ConfigAxis        := #INFEED_CONFIG_AXIS,
+                   HWIDSTW           := "S120_WinderRack~PROFINET-Schnittstelle~Infeed_SIEMENS_Telegramm_370",
+                   HWIDZSW           := "S120_WinderRack~PROFINET-Schnittstelle~Infeed_SIEMENS_Telegramm_370");
+  // Enable winder axis
+  "InstEnableWinderAxis"(Axis      := "winder",
+                            Enable    := "enableAxes",
+                            StartMode := #SPEED_CONTROLLED);
+  // Dancer control winder
+    // Dancer control winder: Set dancer setpoint position
+    IF "enableCtrlWinder" THEN
+      CntrlSetpoint := 50.0;
+      "InstWinderControl".ctrlEnable := TRUE;
+    ELSE
+      CntrlSetpoint := 0.0;
+      IF winderDiagtechnologyControllerDiag.pidRFGSetpointReached
+        AND CntrlActual <= #DANCER_LOWER_LIMIT
+      THEN
+        "InstWinderControl".ctrlEnable := FALSE;
+      END_IF;
+    END_IF;
+  // Dancer control winder: Indirect tension control
+    "InstWinderControl"(enableWinder := "enableWinder",
+                              speedMatch   := "enableWinder",
+                              ctrlEnable   := "enableCtrlWinderDown",
+                              setDiameter  := "setDiameter",
+                              winderInput  := WinderInput,
+                              winderOutput := WinderOutput);
+  "InstSectionalDriveControl"(sectionalDriveOutput := sectionalOutput[1],
+                              sectionalDriveInput  := sectionalInput[1]);
+  "InstMoveLineAxis"(Axis               := "line",
+                     Execute            := "startLine" AND "InstEnableLineAxis".Status,
+                     Velocity           := "lineSetVelocity", 
+                     Acceleration       := 0.3,               
+                     Deceleration       := 0.3,               
+                     Jerk               := 600.0,             
+                     Direction          := #DIRECTION_DEFINED_BY_SIGN,  
+                     PositionControlled := TRUE);             
+  "InstHaltLineAxis"(Axis              := "line",
+                     Execute           := "stopLineAxis" AND "InstEnableLineAxis".Status,
+                     Deceleration      := 0.6,      
+                     Jerk              := 1200.0,   
+                     AbortAcceleration := FALSE);
+  // Record friction measurement of winder
+  "InstFrictionMeasurementWinder"(execute               := execute,
+                                     abort                 := abort,
+                                     warmUpTime            := warmUpTime,
+                                     rampTime              := rampTime,
+                                     noOfMeasurementPoints := noOfMeasurementPoints,
+                                     sizeOfArray           := sizeOfArray,
+                                     maxSpeed              := maxSpeed,
+                                     speedValues           := speedValues,
+                                     measurementDelayTime  := measurementDelayTime,
+                                     done                  => done,
+                                     valid                 => valid,
+                                     aborted               => aborted,
+                                     busy                  => busy,
+                                     error                 => error,
+                                     subfunctionState      => subfunctionState,
+                                     status                => status,
+                                     torqueOutValues       := yn_torqueValues,
+                                     speedOutValues        := xn_speedValues,
+                                     axis                  := "winder");
+  // Leading value interconnection
+  // Copy to local temp variables
+  // Line setpoint values
+  #tempLinePosition := Position * lengthConversion;
+  #tempLineVelocity := Velocity * velocityConversion;
+  #tempLineAcceleration := Acceleration * accelerationConversion;
+  // Line actual values (used for diameter calculation)
+  #tempLineActPos := ActualPosition * lengthConversion;
+  #tempLineActVel := ActualVelocity * velocityConversion;
+    // Forward temporary variables to winder interface
+    lineAxisMotionVector.s := #tempLinePosition;
+    lineAxisMotionVector.v := #tempLineVelocity;
+    lineAxisMotionVector.a := #tempLineAcceleration;
+    lineAxisActualValues.s := #tempLineActPos;
+    lineAxisActualValues.v := #tempLineActVel;
+    lineAxisMotionVector.s := #tempLinePosition;
+    lineAxisMotionVector.v := #tempLineVelocity;
+    lineAxisMotionVector.a := #tempLineAcceleration;
+  // [%] Dancer actual value for TPID
+  CntrlActual := "LConSMC_Linear"(x := "dancerActualPosition",
+                                                                           x1 := 1995,
+                                                                           y1 := 0.0,
+                                                                           x2 := 16700,
+                                                                           y2 := 100.0);
+  // [m] Linearization of external diameter sensor values for  winder
+diameterSetValue := "LConSMC_Linear"(x := "diameterSensorWinder",s
+                                                                                            x1 := 0,
+                                                                                            y1 := 0.41,
+                                                                                            x2 := 19900,
+                                                                                            y2 := 0.075);
+  //  winder control - Dancer control
+  "InstWinder"(enable               := enable,
+                  speedMatch           := speedMatch,
+                  cntrlEnable          := cntrlEnable,
+                  jogPos               := jogPos,
+                  jogNeg               := jogNeg,
+                  lineAxisMotionVector := lineAxisMotionVector,
+                  lineAxisActualValues := lineAxisActualValues,
+                  additionalVelocity   := additionalVelocity,
+                  typeOfWinder         := typeOfWinder,
+                  controlMode          := controlMode,
+                  typeOfDiameterCalc   := typeOfDiameterCalc,
+                  holdDiameter         := holdDiameter,
+                  setDiameter          := setDiameter,
+                  CntrlSetpoint        := CntrlSetpoint,
+                  CntrlActual          := CntrlActual,
+                  tCycle               := tCycle,
+                  winderAxis           := winderAxis,
+                  busy                 => WinderOutputbusy,
+                  active               => WinderOutputactive,
+                  ctrlBusy             => WinderOutputctrlBusy,
+                  inSync               => WinderOutputinSync,
+                  error                => WinderOutputerror,
+                  errorID              => WinderOutputerrorID,
+                  diameter             := winderDiameter,
+                  winderConfig         := WinderConfig,
+                  winderDiag           := winderDiag
+  );
+  // Kp-Adaption speed controller adaption as a function of the current diameter (*optional*)
+  // Ony for SINAMICS S120 possible --> Linearization must be done in the SINAMICS
+  in.diameter := winderDiameter;
+  // Kp-Adaption for  winder
+  "InstKpAdaptionWinder"(enable          := in.enable,
+                            adaptionMode    := in.adaptionMode,
+                            externalMode    := in.externalMode,
+                            diameter        := in.diameter,
+                            HWAddress       := in.HWAddress,
+                            offset          := in.offset,
+                            busy            => busy,
+                            kpAdaptionValue => kpAdaptionValue,
+                            error           => error,
+                            errorID         => errorID,
+                            winderDiag      := winderDiag,
+                            winderConfig    := WinderConfig);
+  // Example to call sectional drive function block
+  "InstSectionalDrive"(enable               := enable,
+                       speedMatch           := speedMatch,
+                       CntrlEnable          := CntrlEnable,
+                       jogPos               := jogPos,
+                       jogNeg               := jogNeg,
+                       lineAxisMotionVector := lineAxisMotionVector,
+                       additionalVelocity   := additionalVelocity,
+                       draw                 := draw,
+                       typeOfDrive          := typeOfDrive,
+                       controlMode          := controlMode,
+                       CntrlSetpoint        := CntrlSetpoint,
+                       CntrlActual          := CntrlActual,
+                       tCycle               := tCycle,
+                       axis                 := axis,
+                       busy                 => busy,
+                       active               => active,
+                       inSync               => inSync,
+                       ctrlBusy             => ctrlBusy,
+                       error                => error,
+                       errorID              => errorID,
+                       sectionalConfig      := sectionalConfig,
+                       sectionalDiag        := sectionalDiag);
+
+// This is an example program to initialize the winder/sectional drive configuration data
+
+    // Initialize  winder in dancer control mode
+    "InitSMC_WinderDancerSpeedAdapt"(winderConfig => WinderConfig,
+                                     winderInput  => WinderInput);
+    // Initialize speed controller Kp-Adaption function 
+    "InitSMC_KpAdaption"(kpAdaptionIn := in);
+    // Initialize friction measurement configuration (*optional if measurement is used*)
+    "InitSMC_FrictionMeasurement"(in);
+  // Initialization of sectional drive data in draw control mode
+  // *Note* Just for demonstration, there is no sectional drive axis included in the project
+  "InitSMC_SectionalDrawControl"(sectionalConfig => sectionalConfig[1],
+                                 sectionalInput  => sectionalInput[1]);
+    // In case of different unit of leading axis (not [m/min] or [ft/min]) the leading value motion vector (s,v,a) must be adapted before
+  // forwarding to the winder function block
+  // *Note* In this projects only for demonstration, not necessary as line axis is already in correct unit 
+  "InstLineUnitConversion"(lengthUnitInput              := LengthUnit,
+                           velocityUnitInput            := VelocityUnit,
+                           formatLength                 := Mechanics.LeadScrew / 1.0e3,
+                           lengthConversionFactor       => lengthConversion,
+                           velocityConversionFactor     => velocityConversion,
+                           accelerationConversionFactor => accelerationConversion);
+
+#execute := FALSE;
+#abort := FALSE;
+#warmUpTime := T#30s;
+#measurementDelayTime := T#1s;
+#rampTime := 1000.0;
+#noOfMeasurementPoints := 100;
+#sizeOfArray := 10;
+
+
+#maxSpeed := 0.0;
+
+    #adaptionMode := TRUE;
+    #externalMode := FALSE;
+    #HWAddress := 299;
+    #offset := 0;
+    #enable := TRUE;
+    // #diameter               // Must be connected to output winder diameter in the user program
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #CntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #axis := 0;
+    #draw := 1.0;
+    #typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL";
+    #controlMode := "LCON_CONTROL_MODE_DANCER_SPEED";
+    #CntrlSetpoint := 50.0;
+    #tCycle := 0.0;
+        #positionControlled := FALSE;
+        #diameter := 0.5;
+        #axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        // #overrideVelocity := 0.0;
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1521;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := LREAL_TO_REAL(360.0 * 0.65);
+        #deceleration := LREAL_TO_REAL(360.0 * 0.65);
+        #jerk := LREAL_TO_REAL(360.0 * 1.3);
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := 10 * #acceleration;
+        #deceleration := 10 * #deceleration;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 0.5 * #acceleration;
+        #deceleration := 0.5 * #deceleration;
+        #jerk := 0.5 * #jerk;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 2.0 * #deceleration;
+        #jerk := 2.0 * #jerk;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 0.6;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 1.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 5.0;
+            #yn_torqueValues[0] := 0.0137;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        //actual value
+        #filterTime := 10.0;
+        #deadBand := 0.0;
+        //P-part
+        #KpAdaptionValue := 0.0;
+        #x1 := 0.0;
+        #Kp1 := 0.3;
+        #x2 := 0.0;
+        #Kp2 := 0.0;
+        //I-part
+        #setIntChannel := FALSE;
+        #intSetValue := 0.0;
+        #holdIntChannel := false;
+        #integTime := 0.0;
+        //D-part
+        #derivTime := 0.0;
+        #derivControlMode := false;
+        //output
+        #limRampTime := 1000.0;
+        #outValueFactor := 1.0;
+        #upperLimit := 20.0;
+        #lowerLimit := -20.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #CntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #draw := 1.0;
+    #typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL";
+    #controlMode := "LCON_CONTROL_MODE_DRAW_CONTROL";
+    // #CntrlSetpoint := 0.0;
+    // #tCycle        := 0.0; //is set in PostServo
+        #positionControlled := FALSE;
+        #diameter := 0.5;
+        #axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        // #overrideVelocity  := 10.0; //[LU/min]
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1061;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := 0.075;
+        #deceleration := 0.075;
+        #jerk := 150;
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := 0.3;
+        #deceleration := 0.3;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 0.15;
+        #deceleration := 0.15;
+        ;
+        #jerk := 300;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1.1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 0.6;
+        #jerk := 1200.0;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 1.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 5.0;
+            #yn_torqueValues[0] := 0.0137;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        // setNominalValue  := 100.0;  
+        // setRampTime      := 3000.0; 
+        // tensionReference := 0.0;
+        // //actual value
+        // filterTime := 10.0;   
+        // deadBand   := 0.0;  
+        // //P-part
+        // KpAdaptionValue := 0.0;   
+        // x1 := 0.0;    
+        // Kp1 := 0.3;   
+        // x2 := 0.0;    
+        // Kp2 := 0.0;   
+        // //I-part
+        // setIntChannel := FALSE;  
+        // intSetValue := 0.0;  
+        // holdIntChannel := false; 
+        // integTime := 0.0; 
+        // //D-part
+        // derivTime := 0.0;  
+        // derivControlMode := false;  
+        // //output
+        // limRampTime := 1000.0;  
+        // outValueFactor := 1.0;  
+        // upperLimit := 20.0;   
+        // lowerLimit := -20.0;   
+        // Webbreak detection not possible for control mode V-Constant
+        // enableDetection := FALSE;
+        // lowerLimitError := 0.5;  
+        // upperLimitError := 0.5;   
+        // delayTime := T#200ms;     
+        // minLineVelocity := 5.0;  
+
+  // TRUE: Enable function block. With rising edge a validation of parameter is done and communication with drive is started
+  // FALSE: Disable the function block
+  #sectionalDriveInput.enable := #enableSectionalDrive;
+  //TRUE: Enable web velocity setpoint ("lineAxisMotionVector"). The drive will synchronize up to web velocity using syncronization dynamics. If the velocity is reached the output "inSync" will become TRUE.
+  //FALSE: Drive will decelerate to standstill using stop dynamics
+  #sectionalDriveInput.speedMatch := #speedMatch AND #busy AND #active;
+  //TRUE: Enable web tension control (enable torque limits, dancer position setpoint etc.) 
+  #sectionalDriveInput.CntrlEnable := #ctrlEnable AND #inSync AND NOT #error;
+  #busy := #busy;
+  #ctrlBusy := #ctrlBusy;
+  #inSync := #inSync;
+  #error := #error;
+  #errorID := #errorID;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #CntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #axis := 0;
+    #draw := 1.0;
+    #typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL";
+    #controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION";
+    #CntrlSetpoint := 10.0;
+    // #tCycle        := 0.0; //is set in PostServo
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        #diameter := 0.5;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        #overrideVelocity := 10.0;
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1083;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := 0.65;
+        #deceleration := 0.65;
+        #jerk := 1.3;
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := 10 * #acceleration;
+        #deceleration := 10 * #deceleration;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 0.5 * #acceleration;
+        #deceleration := 0.5 * #deceleration;
+        #jerk := 0.5 * #jerk;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 2.0 * #deceleration;
+        #jerk := 2.0 * #jerk;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 1.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 5.0;
+            #yn_torqueValues[0] := 0.0137;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        // //actual value
+        // #filterTime := 10.0;   
+        // #deadBand   := 0.0;   
+        // //P-part
+        // #KpAdaptionValue := 0.0;  
+        // #x1 := 0.0;    
+        // #Kp1 := 0.3;   
+        // #x2 := 0.0;    
+        // #Kp2 := 0.0;  
+        // //I-part
+        // #setIntChannel := FALSE; 
+        // #intSetValue := 0.0; 
+        // #holdIntChannel := false; 
+        // #integTime := 0.0; 
+        // //D-part
+        // #derivTime := 0.0;  
+        // #derivControlMode := false;
+        // //output
+        // #limRampTime := 1000.0; 
+        // #outValueFactor := 1.0; 
+        // #upperLimit := 20.0;     
+        // #lowerLimit := -20.0;    
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+  // Comment/Function: Initialize parameter for control mode "Indirect tension control via speed setpoint adaption"
+(/*
+This FC provides all necessary input/ configuration parameter which are necessary to configure for the control mode "Indirect tension control via speed setpoint adaption".
+NOTE
+: For multiple use of the FC with different sectional drives add configuration parameter to the input structure of the function
+---
+*/)
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #CntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #axis := 0;
+    #draw := 1.0;
+    #typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL";
+    #controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION_SPEED_ADAPT";
+    #CntrlSetpoint := 50.0;
+    #tCycle := 0.0;
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        #diameter := 0.5;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        // #overrideVelocity := 0.0; //[LU/min]
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1521;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := -1.0;
+        #deceleration := -1.0;
+        #jerk := -1.0;
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := -1.0;
+        #deceleration := -1.0;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := -1.0;
+        #deceleration := -1.0;
+        #jerk := -1.0;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := -1.0;
+        #jerk := 0.0;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 0.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 0.0;
+            #yn_torqueValues[0] := 0.00;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 0.0;
+        #tensionAdjustment := 1.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        //actual value
+        #filterTime := 10.0;
+        #deadBand := 0.0;
+        //P-part
+        #KpAdaptionValue := 0.0;
+        #x1 := 0.0;
+        #Kp1 := 0.03;
+        #x2 := 0.0;
+        #Kp2 := 0.0;
+        //I-part
+        #setIntChannel := FALSE;
+        #intSetValue := 0.0;
+        #holdIntChannel := false;
+        #integTime := 0.0;
+        //D-part
+        #derivTime := 0.0;
+        #derivControlMode := false;
+        //output
+        #limRampTime := 1000.0;
+        #outValueFactor := 1.0;
+        #upperLimit := 20.0;
+        #lowerLimit := -20.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #CntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #axis := 0;
+    #draw := 1.0;
+    #typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL";
+    #controlMode := "LCON_CONTROL_MODE_TENSION_SPEED";
+    #CntrlSetpoint := 50.0;
+    #tCycle := 0.0;
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        #diameter := 0.5;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        // #overrideVelocity := 0.0; //[LU/min]
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1521;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := LREAL_TO_REAL(360.0 * 0.65);
+        #deceleration := LREAL_TO_REAL(360.0 * 0.65);
+        #jerk := LREAL_TO_REAL(360 * 1.3);
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := 10 * #acceleration;
+        #deceleration := 10 * #deceleration;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 0.5 * #acceleration;
+        #deceleration := 0.5 * #deceleration;
+        #jerk := 0.5 * #jerk;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 2.0 * #deceleration;
+        #jerk := 2.0 * #jerk;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 1.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 0.0;
+            #yn_torqueValues[0] := 0.00;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        //actual value
+        #filterTime := 10.0;
+        #deadBand := 0.0;
+        //P-part
+        #KpAdaptionValue := 0.0;
+        #x1 := 0.0;
+        #Kp1 := 0.3;
+        #x2 := 0.0;
+        #Kp2 := 0.0;
+        //I-part
+        #setIntChannel := FALSE;
+        #intSetValue := 0.0;
+        #holdIntChannel := false;
+        #integTime := 0.0;
+        //D-part
+        #derivTime := 0.0;
+        #derivControlMode := false;
+        //output
+        #limRampTime := 1000.0;
+        #outValueFactor := 1.0;
+        #upperLimit := 20.0;
+        #lowerLimit := -20.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #CntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #axis := 0;
+    #draw := 1.0;
+    #typeOfDrive := "LCON_TYPE_OF_DRIVE_PULL";
+    #controlMode := "LCON_CONTROL_MODE_TENSION_TORQUE";
+    #CntrlSetpoint := 50.0;
+    #tCycle := 0.0;
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        #diameter := 0.5;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := True;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        #overrideVelocity := 10.0;
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1521;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := LREAL_TO_REAL(360 * 0.65);
+        #deceleration := LREAL_TO_REAL(360 * 0.65);
+        #jerk := LREAL_TO_REAL(360 * 1.3);
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := 10 * #acceleration;
+        #deceleration := 10 * #deceleration;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 0.5 * #acceleration;
+        #deceleration := 0.5 * #deceleration;
+        #jerk := 0.5 * #jerk;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 2.0 * #deceleration;
+        #jerk := 2.0 * #jerk;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 1.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 0.0;
+            #yn_torqueValues[0] := 0.00;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        //actual value
+        #filterTime := 10.0;
+        #deadBand := 0.0;
+        //P-part
+        #KpAdaptionValue := 0.0;
+        #x1 := 0.0;
+        #Kp1 := 0.3;
+        #x2 := 0.0;
+        #Kp2 := 0.0;
+        //I-part
+        #setIntChannel := FALSE;
+        #intSetValue := 0.0;
+        #holdIntChannel := false;
+        #integTime := 0.0;
+        //D-part
+        #derivTime := 0.0;
+        #derivControlMode := false;
+        //output
+        #limRampTime := 1000.0;
+        #outValueFactor := 1.0;
+        #upperLimit := 20.0;
+        #lowerLimit := -20.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+  // TRUE: Enable function block. With rising edge a validation of parameter is done and communication with drive is started
+  // FALSE: Disable the function block
+  #enable := #enableWinder;
+  // TRUE: Set diameter to the value in "diameterSetValue"
+  // FALSE: Internal diameter calculation is active
+  #setDiameter := #setDiameter;
+  //TRUE: Enable web velocity setpoint ("lineAxisMotionVector"). The drive will synchronize up to web velocity using syncronization dynamics. If the velocity is reached the output "inSync" will become TRUE.
+  //FALSE: Drive will decelerate to standstill using stop dynamics
+  #speedMatch := #speedMatch AND #busy AND #active;
+  //TRUE: Enable web tension control (enable torque limits, dancer position setpoint etc.) 
+  #cntrlEnable := #ctrlEnable AND #inSync AND NOT #error;
+  #busy := #busy;
+  #ctrlBusy := #ctrlBusy;
+  #inSync := #inSync;
+  #error := #error;
+  #errorID := #errorID;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #cntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #winderAxis := "winder";
+    #typeOfWinder := "LCON_TYPE_OF_WINDER_UNWIND_FROM_ABOVE";
+    #controlMode := "LCON_CONTROL_MODE_DANCER_SPEED";
+    #holdDiameter := FALSE;
+    #setDiameter := FALSE;
+    #CntrlSetpoint := 50.0;
+    #tCycle := 0.0;
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        // #overrideVelocity := 0.0; //[LU/min]
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1521;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := 360.0;
+        #deceleration := 360.0;
+        #jerk := 0.0;
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := LREAL_TO_REAL(MaxAcceleration);
+        #deceleration := LREAL_TO_REAL(MaxDeceleration);
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 360.0;
+        #deceleration := 360.0;
+        #jerk := 0.0;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 360.0;
+        #jerk := 0.0;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 0.6;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 0.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 5.0;
+            #yn_torqueValues[0] := 0.0137;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #MaterialWidth := 0.035;
+            #MaterialDensity := 1441.7;
+            #MaterialFillFactor := 1.0;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #dDdTAdjustment := 0.0;
+        #additiveTorque := 0.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        //actual value
+        #filterTime := 10.0;
+        #deadBand := 0.0;
+        //P-part
+        #KpAdaptionValue := 0.0;
+        #x1 := 0.0;
+        #Kp1 := 0.3;
+        #x2 := 0.0;
+        #Kp2 := 0.0;
+        //I-part
+        #setIntChannel := FALSE;
+        #intSetValue := 0.0;
+        #holdIntChannel := false;
+        #integTime := 0.0;
+        //D-part
+        #derivTime := 0.0;
+        #derivControlMode := false;
+        //output
+        #limRampTime := 1000.0;
+        #outValueFactor := 1.0;
+        #upperLimit := 20.0;
+        #lowerLimit := -20.0;
+        //type
+        #useLineAxisActualValues := TRUE;
+        #typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_POSITION";
+        //dimensions
+        #minDia := 0.075;
+        #maxDia := 0.475;
+        //limits
+        #minLineVelocity := 0.5;
+        #minShaftSpeed := 2.0;
+        //filters
+        #lineFilterTime := 20.0;
+        #shaftFilterTime := 20.0;
+        #diameterFilterTime := 0.0;
+        //settings
+        #diameterSetValue := 0.475;
+        #webThickness := 1.275e-4;
+        //calculation
+        #measuringRevolutionCount := 4.0;
+        #firstDiameterOutput := 0.5;
+        #diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #shaftModLength := 360.0;
+        #lineModLength := 1.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #cntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #typeOfWinder := "LCON_TYPE_OF_WINDER_REWIND_FROM_ABOVE";
+    #controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION";
+    #holdDiameter := FALSE;
+    #setDiameter := FALSE;
+    #CntrlSetpoint := 10.0;
+    // #tCycle        := 0.0; //is set in PostServo
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        #overrideVelocity := 10.0;
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1083;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := 1.0;
+        #deceleration := 1.0;
+        #jerk := 0.0;
+        #jogVelocity := 10;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 1.0;
+        #deceleration := 1.0;
+        #jerk := 0.0;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 1.0;
+        #jerk := 0.0;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 0.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 5.0;
+            #yn_torqueValues[0] := 0.0137;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #MaterialWidth := 0.035;
+            #MaterialDensity := 1441.7;
+            #MaterialFillFactor := 1.0;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #dDdTAdjustment := 0.0;
+        #additiveTorque := 0.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        // //actual value
+        // #filterTime := 10.0;  
+        // #deadBand   := 0.0;  
+        // //P-part
+        // #KpAdaptionValue := 0.0;  
+        // #x1 := 0.0;   
+        // #Kp1 := 0.3;   
+        // #x2 := 0.0;   
+        // #Kp2 := 0.0;   
+        // //I-part
+        // #setIntChannel := FALSE;  
+        // #intSetValue := 0.0;   
+        // #holdIntChannel := false; 
+        // #integTime := 0.0; 
+        // //D-part
+        // #derivTime := 0.0;   
+        // #derivControlMode := false;  
+        // //output
+        // #limRampTime := 1000.0; 
+        // #outValueFactor := 1.0; 
+        // #upperLimit := 20.0;  
+        // #lowerLimit := -20.0; 
+        //type
+        #useLineAxisActualValues := TRUE;
+        #typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_INTEGRAL";
+        //dimensions
+        #minDia := 0.075;
+        #maxDia := 0.475;
+        //limits
+        #minLineVelocity := 0.5;
+        #minShaftSpeed := 2.0;
+        //filters
+        #lineFilterTime := 20.0;
+        #shaftFilterTime := 20.0;
+        #diameterFilterTime := 0.0;
+        //settings
+        #diameterSetValue := 0.475;
+        #webThickness := 1.275e-4;
+        //calculation
+        #measuringRevolutionCount := 4.0;
+        #firstDiameterOutput := 0.5;
+        #diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #shaftModLength := 360.0;
+        #lineModLength := 1.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #cntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #winderAxis := 0;
+    #typeOfWinder := "LCON_TYPE_OF_WINDER_REWIND_FROM_ABOVE";
+    #controlMode := "LCON_CONTROL_MODE_INDIRECT_TENSION_SPEED_ADAPT";  
+    #holdDiameter := FALSE;
+    #setDiameter := FALSE;
+    #CntrlSetpoint := 10.0;
+    // #tCycle        := 0.0; //is set in PostServo
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        #overrideVelocity := 10.0;
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1083;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := -1.0;
+        #deceleration := -1.0;
+        #jerk := 0.0;
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := -1.0;
+        #deceleration := -1.0;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := -1.0;
+        #deceleration := -1.0;
+        #jerk := 0.0;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := -1.0;
+        #jerk := 0.0;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 0.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 5.0;
+            #yn_torqueValues[0] := 0.0137;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #MaterialWidth := 0.035;
+            #MaterialDensity := 1441.7;
+            #MaterialFillFactor := 1.0;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #dDdTAdjustment := 0.0;
+        #additiveTorque := 0.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        //actual value
+        #filterTime := 0.0;
+        #deadBand   := 0.0;
+        //P-part
+        #KpAdaptionValue := 0.0;
+        #x1 := 0.0;
+        #Kp1 := 0.3;
+        #x2 := 0.0;
+        #Kp2 := 0.0;
+        //I-part
+        #setIntChannel := FALSE;
+        #intSetValue := 0.0;
+        #holdIntChannel := false;
+        #integTime := 0.0;
+        //D-part
+        #derivTime := 0.0;
+        #derivControlMode := false;
+        //output
+        #limRampTime := 1000.0;
+        #outValueFactor := 1.0;
+        #upperLimit := 2.0;
+        #lowerLimit := -2.0;
+        //type
+        #useLineAxisActualValues := FALSE;
+        #typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_INTEGRAL";
+        //dimensions
+        #minDia := 0.075;
+        #maxDia := 0.475;
+        //limits
+        #minLineVelocity := 0.5;
+        #minShaftSpeed := 2.0;
+        //filters
+        #lineFilterTime := 20.0;
+        #shaftFilterTime := 20.0;
+        #diameterFilterTime := 0.0;
+        //settings
+        #diameterSetValue := 0.475;
+        #webThickness := 1.275e-4;
+        //calculation
+        #measuringRevolutionCount := 4.0;
+        #firstDiameterOutput := 0.5;
+        #diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #shaftModLength := 360.0;
+        #lineModLength := 1.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #cntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #winderAxis := "winder";
+    #typeOfWinder := "LCON_TYPE_OF_WINDER_UNWIND_FROM_ABOVE";
+    #controlMode := "LCON_CONTROL_MODE_TENSION_SPEED";
+    #holdDiameter := FALSE;
+    #setDiameter := FALSE;
+    #CntrlSetpoint := 50.0;
+    #tCycle := 0.0;
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        // #overrideVelocity := 0.0; //[LU/min]
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1521;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := LREAL_TO_REAL(360.0 * 0.65);
+        #deceleration := LREAL_TO_REAL(360.0 * 0.65);
+        #jerk := LREAL_TO_REAL(360 * 1.3);
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := 10 * #acceleration;
+        #deceleration := 10 * #deceleration;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 0.5 * #acceleration;
+        #deceleration := 0.5 * #deceleration;
+        #jerk := 0.5 * #jerk;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 2.0 * #deceleration;
+        #jerk := 2.0 * #jerk;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 1.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 0.0;
+            #yn_torqueValues[0] := 0.00;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #MaterialWidth := 0.035;
+            #MaterialDensity := 1441.7;
+            #MaterialFillFactor := 1.0;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #dDdTAdjustment := 0.0;
+        #additiveTorque := 0.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        //actual value
+        #filterTime := 10.0;
+        #deadBand := 0.0;
+        //P-part
+        #KpAdaptionValue := 0.0;
+        #x1 := 0.0;
+        #Kp1 := 0.3;
+        #x2 := 0.0;
+        #Kp2 := 0.0;
+        //I-part
+        #setIntChannel := FALSE;
+        #intSetValue := 0.0;
+        #holdIntChannel := false;
+        #integTime := 0.0;
+        //D-part
+        #derivTime := 0.0;
+        #derivControlMode := false;
+        //output
+        #limRampTime := 1000.0;
+        #outValueFactor := 1.0;
+        #upperLimit := 20.0;
+        #lowerLimit := -20.0;
+        //type
+        #useLineAxisActualValues := TRUE;
+        #typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_POSITION";
+        //dimensions
+        #minDia := 0.075;
+        #maxDia := 0.475;
+        //limits
+        #minLineVelocity := 0.5;
+        #minShaftSpeed := 2.0;
+        //filters
+        #lineFilterTime := 20.0;
+        #shaftFilterTime := 20.0;
+        #diameterFilterTime := 0.0;
+        //settings
+        #diameterSetValue := 0.475;
+        #webThickness := 1.275e-4;
+        //calculation
+        #measuringRevolutionCount := 4.0;
+        #firstDiameterOutput := 0.5;
+        #diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #shaftModLength := 360.0;
+        #lineModLength := 1.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #cntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #winderAxis := "winder";
+    #typeOfWinder := "LCON_TYPE_OF_WINDER_UNWIND_FROM_ABOVE";
+    #controlMode := "LCON_CONTROL_MODE_TENSION_TORQUE";
+    #holdDiameter := FALSE;
+    #setDiameter := FALSE;
+    #CntrlSetpoint := 50.0;
+    #tCycle := 0.0;
+        #positionControlled := FALSE;
+        #axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := True;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        #overrideVelocity := 10.0;
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1521;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := LREAL_TO_REAL(360 * 0.65);
+        #deceleration := LREAL_TO_REAL(360 * 0.65);
+        #jerk := LREAL_TO_REAL(360 * 1.3);
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := 10 * #acceleration;
+        #deceleration := 10 * #deceleration;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 0.5 * #acceleration;
+        #deceleration := 0.5 * #deceleration;
+        #jerk := 0.5 * #jerk;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 2.0 * #deceleration;
+        #jerk := 2.0 * #jerk;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 1.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 0.0;
+            #yn_torqueValues[0] := 0.00;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #MaterialWidth := 0.035;
+            #MaterialDensity := 1441.7;
+            #MaterialFillFactor := 1.0;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #dDdTAdjustment := 0.0;
+        #additiveTorque := 0.0;
+        #setNominalValue := 100.0;
+        #setRampTime := 3000.0;
+        #tensionReference := 0.0;
+        //actual value
+        #filterTime := 10.0;
+        #deadBand := 0.0;
+        //P-part
+        #KpAdaptionValue := 0.0;
+        #x1 := 0.0;
+        #Kp1 := 0.3;
+        #x2 := 0.0;
+        #Kp2 := 0.0;
+        //I-part
+        #setIntChannel := FALSE;
+        #intSetValue := 0.0;
+        #holdIntChannel := false;
+        #integTime := 0.0;
+        //D-part
+        #derivTime := 0.0;
+        #derivControlMode := false;
+        //output
+        #limRampTime := 1000.0;
+        #outValueFactor := 1.0;
+        #upperLimit := 20.0;
+        #lowerLimit := -20.0;
+        //type
+        #useLineAxisActualValues := TRUE;
+        #typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_POSITION";
+        //dimensions
+        #minDia := 0.075;
+        #maxDia := 0.475;
+        //limits
+        #minLineVelocity := 0.5;
+        #minShaftSpeed := 2.0;
+        //filters
+        #lineFilterTime := 20.0;
+        #shaftFilterTime := 20.0;
+        #diameterFilterTime := 0.0;
+        //settings
+        #diameterSetValue := 0.475;
+        #webThickness := 1.275e-4;
+        //calculation
+        #measuringRevolutionCount := 4.0;
+        #firstDiameterOutput := 0.5;
+        #diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #shaftModLength := 360.0;
+        #lineModLength := 1.0;
+        #enableDetection := FALSE;
+        #lowerLimitError := 0.5;
+        #upperLimitError := 0.5;
+        #delayTime := T#200ms;
+        #minLineVelocity := 5.0;
+
+    #enable := FALSE;
+    #speedMatch := FALSE;
+    #cntrlEnable := FALSE;
+    #jogPos := FALSE;
+    #jogNeg := FALSE;
+    #additionalVelocity := 0.0;
+    #winderAxis := 0;
+    #typeOfWinder := "LCON_TYPE_OF_WINDER_REWIND_FROM_ABOVE";
+    #controlMode := "LCON_CONTROL_MODE_V_CONSTANT";
+    #holdDiameter := FALSE;
+    #setDiameter := FALSE;
+    // #CntrlSetpoint := 0.0;
+    // #tCycle        := 0.0; //is set in PostServo
+        #positionControlled := TRUE;
+        #axisCtrl := TRUE;
+        // getAxisConfigAtStart = TRUE   : Get TO configuration with rising edge of "enable" input of winder -> Peak in runtime possible
+        // getAxisConfigAtStart = FALSE  : TO configuration can also be read via function block LConAMC_ReadTOConfig in the OB1
+        #getAxisConfigAtStart := TRUE;
+        #loadGear.numerator := 1;
+        #loadGear.denominator := 1;
+        // #overrideVelocity  := 10.0; //[LU/min]
+        #maxVelocity := 100.0;
+        #jogVelocity := 3.0;
+        #metricUnits := TRUE;
+        #axisTorqueUnit := 1126;
+        #axisVelocityUnit := 1521;
+        #noOfSamplesLineVelocity := 1;
+        // Jog: (enable = TRUE, speedMatch = FALSE, jogPos/jogNeg = TRUE)
+        #acceleration := LREAL_TO_REAL(360 * 0.65);
+        #deceleration := LREAL_TO_REAL(360 * 0.65);
+        #jerk := LREAL_TO_REAL(360 * 1.3);
+        #jogVelocity := 10;
+        // Operation: speedmatch, cntrlenable active
+        #acceleration := 10 * #acceleration;
+        #deceleration := 10 * #deceleration;
+        #jerk := 0.0;
+        // Sync: Enable and Speedmatch = TRUE
+        #acceleration := 0.5 * #acceleration;
+        #deceleration := 0.5 * #deceleration;
+        #jerk := 0.5 * #jerk;
+        #abortAcceleration := FALSE;
+        #syncToleranceFactor := 1;
+        // Stop: enable = False OR (speedmatch = FALSE and jog winder = FALSE)
+        #deceleration := 2.0 * #deceleration;
+        #jerk := 2.0 * #jerk;
+        #abortAcceleration := TRUE;
+        #upperTorqueLimit := 1.0;
+        #lowerTorqueLimit := -1.0;
+        #referenceTorque := 1.2;
+            #useSetValForFrictionComp := FALSE;
+            #frictionAdjustment := 1.0;
+            #sizeOfArray := 10;
+            #xn_speedValues[0] := 5.0;
+            #yn_torqueValues[0] := 0.0137;
+            #xn_speedValues[1] := 10.0;
+            #yn_torqueValues[1] := 0.0138;
+            #xn_speedValues[2] := 20.0;
+            #yn_torqueValues[2] := 0.0143;
+            #xn_speedValues[3] := 50.0;
+            #yn_torqueValues[3] := 0.0150;
+            #MaterialWidth := 0.035;
+            #MaterialDensity := 1441.7;
+            #MaterialFillFactor := 1.0;
+            #JFixed := LREAL_TO_REAL(0.0343 - 0.00151);
+            #JMandrel := 0.0;
+            #JMotor := 0.001510;
+            #accelerationAdjustment := 1.0;
+        #tensionAdjustment := 1.0;
+        #dDdTAdjustment := 0.0;
+        #additiveTorque := 0.0;
+        // #setNominalValue  := 100.0;  
+        // #setRampTime      := 3000.0; 
+        // #tensionReference := 0.0;
+        // //actual value
+        // #filterTime := 10.0;   
+        // #deadBand   := 0.0;   
+        // //P-part
+        // #KpAdaptionValue := 0.0;   
+        // #x1 := 0.0;   
+        // #Kp1 := 0.3;   
+        // #x2 := 0.0;   
+        // #Kp2 := 0.0;   
+        // //I-part
+        // #setIntChannel := FALSE;  
+        // #intSetValue := 0.0;   
+        // #holdIntChannel := false; 
+        // #integTime := 0.0; 
+        // //D-part
+        // #derivTime := 0.0;   
+        // #derivControlMode := false;  
+        // //output
+        // #limRampTime := 1000.0;  
+        // #outValueFactor := 1.0;  
+        // #upperLimit := 20.0;    
+        // #lowerLimit := -20.0;   
+        //type
+        #useLineAxisActualValues := TRUE;
+        #typeOfDiameterCalc := "LCON_DIAM_CALC_MODE_ADDITION";
+        //dimensions
+        #minDia := 0.075;
+        #maxDia := 0.475;
+        //limits
+        #minLineVelocity := 0.5;
+        #minShaftSpeed := 2.0;
+        //filters
+        #lineFilterTime := 20.0;
+        #shaftFilterTime := 20.0;
+        #diameterFilterTime := 0.0;
+        //settings
+        #diameterSetValue := 0.475;
+        #webThickness := 100.0e-6;
+        //calculation
+        #measuringRevolutionCount := 4.0;
+        #firstDiameterOutput := 0.5;
+        #diameterOutputRate := 1.0;
+        // Settings only for Diam_Calc_Pos
+        #shaftModLength := 360.0;
+        #lineModLength := 1.0;
+        // Webbreak detection not possible for control mode V-Constant
+        // #enableDetection := FALSE;
+        // #lowerLimitError := 0.5;   
+        // #upperLimitError := 0.5;  
+        // #delayTime := T#200ms;     
+        // #minLineVelocity := 5.0;  
