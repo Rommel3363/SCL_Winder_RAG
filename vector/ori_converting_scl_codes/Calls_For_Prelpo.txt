@@ -1,0 +1,194 @@
+
+REGION DESCRIPTION
+(/*
+This is an example program to call the winder function block and operate the line axis
+*/)
+END_REGION DESCRIPTION
+
+REGION FIRST CALL
+  // Read cycle time of calling OB
+  IF #Initial_Call THEN
+    "LConSMC_Data".WinderInput["TOP_WINDER"].tCycle     := UDINT_TO_REAL(#cycleTime / 1000000);                 // Convert unit: [ns] --> [ms]
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].tCycle  := "LConSMC_Data".WinderInput["TOP_WINDER"].tCycle;
+    "LConSMC_Data".sectionalInput[1].tCycle             := "LConSMC_Data".WinderInput["TOP_WINDER"].tCycle;
+  END_IF;
+END_REGION
+
+REGION LEADING VALUE
+  // Leading value interconnection
+  // Copy to local temp variables
+  // Line setpoint values
+  #tempLinePosition := "line".Position * "LConSMC_Data".lengthConversion;               // Convert unit to [m]
+  #tempLineVelocity := "line".Velocity * "LConSMC_Data".velocityConversion;             // Convert unit to [m/min]
+  #tempLineAcceleration := "line".Acceleration * "LConSMC_Data".accelerationConversion; // Convert unit to [m/s^2]
+  // Line actual values (used for diameter calculation)
+  #tempLineActPos := "line".ActualPosition * "LConSMC_Data".lengthConversion;           // Convert unit to [m]
+  #tempLineActVel := "line".ActualVelocity * "LConSMC_Data".velocityConversion;         // Convert unit to [m/min]
+  
+  REGION WINDER
+    // Forward temporary variables to winder interface
+    "LConSMC_Data".WinderInput["TOP_WINDER"].lineAxisMotionVector.s := #tempLinePosition;
+    "LConSMC_Data".WinderInput["TOP_WINDER"].lineAxisMotionVector.v := #tempLineVelocity;
+    "LConSMC_Data".WinderInput["TOP_WINDER"].lineAxisMotionVector.a := #tempLineAcceleration;
+    
+    "LConSMC_Data".WinderInput["TOP_WINDER"].lineAxisActualValues.s := #tempLineActPos;
+    "LConSMC_Data".WinderInput["TOP_WINDER"].lineAxisActualValues.v := #tempLineActVel;
+    
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.s := #tempLinePosition;
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.v := #tempLineVelocity;
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector.a := #tempLineAcceleration;
+    
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues.s := #tempLineActPos;
+    "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues.v := #tempLineActVel;
+  END_REGION
+  
+  REGION SECTIONAL DRIVE
+    "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.s := #tempLinePosition;
+    "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.v := #tempLineVelocity;
+    "LConSMC_Data".sectionalInput[1].lineAxisMotionVector.a := #tempLineAcceleration;
+  END_REGION
+
+END_REGION ;
+
+REGION FEEDBACK TENSION CONTROL
+  // [%] Dancer actual value for TPID
+  "LConSMC_Data".WinderInput["TOP_WINDER"].CntrlActual := "LConSMC_Linear"(x := "dancerActualPosition",
+                                                                           x1 := 1995,
+                                                                           y1 := 0.0,
+                                                                           x2 := 16700,
+                                                                           y2 := 100.0);
+  
+  // [N] Tension actual value for TPID
+  "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlActual := "LConSMC_Linear"(x := "tensionWinderDown",
+                                                                              x1 := -27648,
+                                                                              y1 := -20.0,
+                                                                              x2 := 27648,
+                                                                              y2 := 20.0);
+END_REGION
+
+REGION EXTERNAL DIAMETER SENSOR
+  // [m] Linearization of external diameter sensor values for bottom winder
+  "LConSMC_Data".WinderConfig["BOTTOM_WINDER"].diamConfig.diameterSetValue := "LConSMC_Linear"(x := "diameterSensorWinderBottom",
+                                                                                               x1 := 3360,
+                                                                                               y1 := 0.44,
+                                                                                               x2 := 24960,
+                                                                                               y2 := 0.075);
+  // [m] Linearization of external diameter sensor values for top winder
+  "LConSMC_Data".WinderConfig["TOP_WINDER"].diamConfig.diameterSetValue := "LConSMC_Linear"(x := "diameterSensorWinderTop",
+                                                                                            x1 := 0,
+                                                                                            y1 := 0.41,
+                                                                                            x2 := 19900,
+                                                                                            y2 := 0.075);
+END_REGION
+
+REGION WINDER CALL
+  // Top winder control - Dancer control
+  "InstWinderTop"(enable               := "LConSMC_Data".WinderInput["TOP_WINDER"].enable,
+                  speedMatch           := "LConSMC_Data".WinderInput["TOP_WINDER"].speedMatch,
+                  cntrlEnable          := "LConSMC_Data".WinderInput["TOP_WINDER"].cntrlEnable,
+                  jogPos               := "LConSMC_Data".WinderInput["TOP_WINDER"].jogPos,
+                  jogNeg               := "LConSMC_Data".WinderInput["TOP_WINDER"].jogNeg,
+                  lineAxisMotionVector := "LConSMC_Data".WinderInput["TOP_WINDER"].lineAxisMotionVector,
+                  lineAxisActualValues := "LConSMC_Data".WinderInput["TOP_WINDER"].lineAxisActualValues,
+                  additionalVelocity   := "LConSMC_Data".WinderInput["TOP_WINDER"].additionalVelocity,
+                  typeOfWinder         := "LConSMC_Data".WinderInput["TOP_WINDER"].typeOfWinder,
+                  controlMode          := "LConSMC_Data".WinderInput["TOP_WINDER"].controlMode,
+                  typeOfDiameterCalc   := "LConSMC_Data".WinderInput["TOP_WINDER"].typeOfDiameterCalc,
+                  holdDiameter         := "LConSMC_Data".WinderInput["TOP_WINDER"].holdDiameter,
+                  setDiameter          := "LConSMC_Data".WinderInput["TOP_WINDER"].setDiameter,
+                  CntrlSetpoint        := "LConSMC_Data".WinderInput["TOP_WINDER"].CntrlSetpoint,
+                  CntrlActual          := "LConSMC_Data".WinderInput["TOP_WINDER"].CntrlActual,
+                  tCycle               := "LConSMC_Data".WinderInput["TOP_WINDER"].tCycle,
+                  winderAxis           := "LConSMC_Data".WinderInput["TOP_WINDER"].winderAxis,
+                  busy                 => "LConSMC_Data".WinderOutput["TOP_WINDER"].busy,
+                  active               => "LConSMC_Data".WinderOutput["TOP_WINDER"].active,
+                  ctrlBusy             => "LConSMC_Data".WinderOutput["TOP_WINDER"].ctrlBusy,
+                  inSync               => "LConSMC_Data".WinderOutput["TOP_WINDER"].inSync,
+                  error                => "LConSMC_Data".WinderOutput["TOP_WINDER"].error,
+                  errorID              => "LConSMC_Data".WinderOutput["TOP_WINDER"].errorID,
+                  diameter             := "LConSMC_Data".winderDiameter["TOP_WINDER"],
+                  winderConfig         := "LConSMC_Data".WinderConfig["TOP_WINDER"],
+                  winderDiag           := "LConSMC_Data".winderDiag["TOP_WINDER"]
+  );
+
+  // Bottom winder control - Indirect tension control
+  "InstWinderDown"(enable := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].enable,
+                   speedMatch := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].speedMatch,
+                   cntrlEnable := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].cntrlEnable,
+                   jogPos := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].jogPos,
+                   jogNeg := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].jogNeg,
+                   lineAxisMotionVector := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisMotionVector,
+                   lineAxisActualValues := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].lineAxisActualValues,
+                   additionalVelocity := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].additionalVelocity,
+                   typeOfWinder := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].typeOfWinder,
+                   controlMode := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].controlMode,
+                   typeOfDiameterCalc := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].typeOfDiameterCalc,
+                   holdDiameter := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].holdDiameter,
+                   setDiameter := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].setDiameter,
+                   CntrlSetpoint := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlSetpoint,
+                   CntrlActual := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].CntrlActual,
+                   tCycle := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].tCycle,
+                   winderAxis := "LConSMC_Data".WinderInput["BOTTOM_WINDER"].winderAxis,
+                   busy => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].busy,
+                   active => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].active,
+                   ctrlBusy => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].ctrlBusy,
+                   inSync => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].inSync,
+                   error => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].error,
+                   errorID => "LConSMC_Data".WinderOutput["BOTTOM_WINDER"].errorID,
+                   diameter := "LConSMC_Data".winderDiameter["BOTTOM_WINDER"],
+                   winderConfig := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"],
+                   winderDiag := "LConSMC_Data".winderDiag["BOTTOM_WINDER"]
+                   
+  );
+  
+END_REGION
+
+REGION KP ADAPTION
+  // Kp-Adaption speed controller adaption as a function of the current diameter (*optional*)
+  // Ony for SINAMICS S120 possible --> Linearization must be done in the SINAMICS
+  "LConSMC_Data".kpAdaptionTop.in.diameter := "LConSMC_Data".winderDiameter["TOP_WINDER"];
+  
+  // Kp-Adaption for top winder
+  "InstKpAdaptionWinderTop"(enable          := "LConSMC_Data".kpAdaptionTop.in.enable,
+                            adaptionMode    := "LConSMC_Data".kpAdaptionTop.in.adaptionMode,
+                            externalMode    := "LConSMC_Data".kpAdaptionTop.in.externalMode,
+                            diameter        := "LConSMC_Data".kpAdaptionTop.in.diameter,
+                            HWAddress       := "LConSMC_Data".kpAdaptionTop.in.HWAddress,
+                            offset          := "LConSMC_Data".kpAdaptionTop.in.offset,
+                            busy            => "LConSMC_Data".kpAdaptionTop.out.busy,
+                            kpAdaptionValue => "LConSMC_Data".kpAdaptionTop.out.kpAdaptionValue,
+                            error           => "LConSMC_Data".kpAdaptionTop.out.error,
+                            errorID         => "LConSMC_Data".kpAdaptionTop.out.errorID,
+                            winderDiag      := "LConSMC_Data".winderDiag["TOP_WINDER"],
+                            winderConfig    := "LConSMC_Data".WinderConfig["TOP_WINDER"]);
+  
+  
+  
+END_REGION
+                           
+REGION SECTIONAL DRIVE CALL
+  // Example to call sectional drive function block
+  "InstSectionalDrive"(enable               := "LConSMC_Data".sectionalInput[1].enable,
+                       speedMatch           := "LConSMC_Data".sectionalInput[1].speedMatch,
+                       CntrlEnable          := "LConSMC_Data".sectionalInput[1].CntrlEnable,
+                       jogPos               := "LConSMC_Data".sectionalInput[1].jogPos,
+                       jogNeg               := "LConSMC_Data".sectionalInput[1].jogNeg,
+                       lineAxisMotionVector := "LConSMC_Data".sectionalInput[1].lineAxisMotionVector,
+                       additionalVelocity   := "LConSMC_Data".sectionalInput[1].additionalVelocity,
+                       draw                 := "LConSMC_Data".sectionalInput[1].draw,
+                       typeOfDrive          := "LConSMC_Data".sectionalInput[1].typeOfDrive,
+                       controlMode          := "LConSMC_Data".sectionalInput[1].controlMode,
+                       CntrlSetpoint        := "LConSMC_Data".sectionalInput[1].CntrlSetpoint,
+                       CntrlActual          := "LConSMC_Data".sectionalInput[1].CntrlActual,
+                       tCycle               := "LConSMC_Data".sectionalInput[1].tCycle,
+                       axis                 := "LConSMC_Data".sectionalInput[1].axis,
+                       busy                 => "LConSMC_Data".sectionalOutput[1].busy,
+                       active               => "LConSMC_Data".sectionalOutput[1].active,
+                       inSync               => "LConSMC_Data".sectionalOutput[1].inSync,
+                       ctrlBusy             => "LConSMC_Data".sectionalOutput[1].ctrlBusy,
+                       error                => "LConSMC_Data".sectionalOutput[1].error,
+                       errorID              => "LConSMC_Data".sectionalOutput[1].errorID,
+                       sectionalConfig      := "LConSMC_Data".sectionalConfig[1],
+                       sectionalDiag        := "LConSMC_Data".sectionalDiag[1]);
+  
+END_REGION

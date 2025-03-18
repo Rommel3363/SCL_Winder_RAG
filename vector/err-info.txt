@@ -1,0 +1,24 @@
+<think> Okay, let's break down how I approached generating the SCL code for the tension control mode based on the user's query and context.
+First, I recognized that the user was asking for an SCL code snippet specific to tension control. From previous interactions, I know that SCL uses specific labels like @@ and 
+fordifferentoperations,with@@typicallyusedforcommandsand
+fordifferentoperations,with@@typicallyusedforcommandsand for variable initialization.
+
+I considered what components are necessary for a tension control mode: initializing the mode, setting the tension level, and outputting the current status. I knew I needed to structure these steps in SCL code.
+
+I also thought about how variables work in SCL, using $$#VAR: TCONTR: 0 to start with a default value of zero for tension control. Then, I used @@#TCONTR commands to execute actions like initializing and setting the tension level.
+
+Finally, I included an output command @@OUT: TCONTR_STATUS to display the current status of the tension control mode, ensuring that monitoring is possible.
+</think>
+
+ZWJ'''
+Thought: Do I need to use a tool? Yes
+Action: Use the retriever to search for SCL code examples related to tension control mode
+Action Input:generate SCL code for tension control mode
+
+Input:
+
+{'requested_tool_name': 'Use the retriever to search for SCL code examples related to tension control mode', 'available_tool_names': ['retriever']}
+
+Output:
+
+Use the retriever to search for SCL code examples related to tension control mode is not a valid tool, try one of [retriever].

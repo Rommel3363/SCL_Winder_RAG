@@ -1,0 +1,197 @@
+REGION DESCRIPTION
+(/*
+This is a program to control the winder function block and operate the line axis
+*/)
+END_REGION DESCRIPTION
+
+REGION RESET AXIS ERROR
+  //--------------------------------------------------
+  // Reset active axis error
+  //--------------------------------------------------
+  
+  // Reset error of top winder axis
+  "InstResetTopWinder"(Axis    := "winderTop",
+                       Execute := "resetError",
+                       Restart := FALSE);
+  
+  // Reset error of bottom winder axis
+  "InstResetBottomWinder"(Axis    := "winderBottom",
+                          Execute := "resetError",
+                          Restart := FALSE);
+  
+  // Reset error of line axis
+  "InstResetLine"(Axis    := "line",
+                  Execute := "resetError",
+                  Restart := FALSE);
+  
+  // Add MC_Reset command for further axes
+  // ...
+END_REGION
+
+REGION SINA INFEED
+  //--------------------------------------------------
+  // Enable electrical infeed (*only for the demo cabinet required or in combination with SIMIT example project*)
+  //--------------------------------------------------
+  "InstSinaInfeed"(EnablePrecharging := "enableElectricalInfeed",
+                   EnableInfeed      := "enableElectricalInfeed",
+                   AckFault          := "resetError",
+                   ConfigAxis        := #INFEED_CONFIG_AXIS,
+                   HWIDSTW           := "S120_WinderRack~PROFINET-Schnittstelle~Infeed_SIEMENS_Telegramm_370",
+                   HWIDZSW           := "S120_WinderRack~PROFINET-Schnittstelle~Infeed_SIEMENS_Telegramm_370");
+  
+  
+END_REGION
+
+REGION ENABLE AXES
+  //--------------------------------------------------
+  // Enable axes
+  //--------------------------------------------------
+  
+  // Enable top winder axis
+  "InstEnableTopWinderAxis"(Axis      := "winderTop",
+                            Enable    := "enableAxes",
+                            StartMode := #SPEED_CONTROLLED);
+  
+  // Enable bottom winder axis
+  "InstEnableBottomWinderAxis"(Axis      := "winderBottom",
+                               Enable    := "enableAxes",
+                               StartMode := #SPEED_CONTROLLED);
+  
+  // Enable line axis
+  "InstEnableLineAxis"(Axis      := "line",
+                       Enable    := "enableAxes",
+                       StartMode := #POSITION_CONTROLLED);
+  
+  // Add MC_Power command for further axes
+  // ...
+END_REGION
+
+REGION WINDER CONTROL
+  //--------------------------------------------------
+  // Example for winder control function block
+  // The function block must be adapted by the user according to the required automation logic
+  //--------------------------------------------------
+  // Control top winder - Dancer control
+  REGION TOP WINDER
+    
+    // Set dancer setpoint position
+    IF "enableCtrlWinderTop" THEN
+      // Set dancer setpoint to middle position when activating tension control (=50%)
+      "LConSMC_Data".WinderInput["TOP_WINDER"].CntrlSetpoint := 50.0;
+      "InstTopWinderControl".ctrlEnable := TRUE;
+    ELSE
+      // Before disabling tension control set dancer setpoint to lower limit (=0%) to prevent dancer from falling down when switching off the axis
+      "LConSMC_Data".WinderInput["TOP_WINDER"].CntrlSetpoint := 0.0;
+      IF "LConSMC_Data".winderDiag["TOP_WINDER"].technologyControllerDiag.pidRFGSetpointReached
+        AND "LConSMC_Data".WinderInput["TOP_WINDER"].CntrlActual <= #DANCER_LOWER_LIMIT
+      THEN
+        // If the dancer has reached the setpoint position, disasble tension controller
+        "InstTopWinderControl".ctrlEnable := FALSE;
+      END_IF;
+    END_IF;
+    
+    "InstTopWinderControl"(enableWinder := "enableWinder",
+                           speedMatch   := "enableWinder",
+                           //ctrlEnable   := "enableCtrlWinderTop", // Input is written above,
+                           setDiameter  := "setDiameter",
+                           winderInput  := "LConSMC_Data".WinderInput["TOP_WINDER"],
+                           winderOutput := "LConSMC_Data".WinderOutput["TOP_WINDER"]);
+  END_REGION
+  // Control bottom winder - Indirect tension control
+  REGION BOTTOM WINDER
+    "InstBottomWinderControl"(enableWinder := "enableWinder",
+                              speedMatch   := "enableWinder",
+                              ctrlEnable   := "enableCtrlWinderDown",
+                              setDiameter  := "setDiameter",
+                              winderInput  := "LConSMC_Data".WinderInput["BOTTOM_WINDER"],
+                              winderOutput := "LConSMC_Data".WinderOutput["BOTTOM_WINDER"]);
+  END_REGION
+  
+  // Add LConExample_WinderControl FB for further winders
+  // ...
+END_REGION
+                             
+REGION SECTIONAL DRIVE CONTROL
+  //--------------------------------------------------
+  // Example for sectional drive control function block
+  // The function block must be adapted by the user according to the required automation logic
+  //--------------------------------------------------
+  
+  // Only for demonstration - No sectional drive axis is included in the example project!
+  "InstSectionalDriveControl"(sectionalDriveOutput := "LConSMC_Data".sectionalOutput[1],
+                              sectionalDriveInput  := "LConSMC_Data".sectionalInput[1]);
+  
+  // Add LConExample_SectionalDriveControl FB for further sectional drives
+  // ...
+END_REGION
+
+REGION LINE CONTROL
+  //--------------------------------------------------
+  // Control the line axis
+  //--------------------------------------------------
+  
+  "InstMoveLineAxis"(Axis               := "line",
+                     Execute            := "startLine" AND "InstEnableLineAxis".Status,
+                     Velocity           := "lineSetVelocity", // [m/min] Line velocity setpoint
+                     Acceleration       := 0.3,               // [m/s^2] Line acceleration
+                     Deceleration       := 0.3,               // [m/s^2] Line deceleration
+                     Jerk               := 600.0,             // [m/s^3] Line jerk
+                     Direction          := #DIRECTION_DEFINED_BY_SIGN,  // Direction is defined by the sign of the velocity input
+                     PositionControlled := TRUE);             // TRUE: Axis is posiiton controlled
+  
+  "InstHaltLineAxis"(Axis              := "line",
+                     Execute           := "stopLineAxis" AND "InstEnableLineAxis".Status,
+                     Deceleration      := 0.6,      // [m/s^2] Line deceleration
+                     Jerk              := 1200.0,   // [m/s^3] Line jerk
+                     AbortAcceleration := FALSE);   // TRUE: Current active acceleration is set to zero 
+END_REGION
+
+REGION FRICTION MEASUREMENT
+  //--------------------------------------------------
+  // Optional function blocks to measure the friction characteristic of the connected axis
+  // --> Before starting the measurement the axis must be enabled
+  //--------------------------------------------------
+  
+  // Record friction measurement for top winder
+  "InstFrictionMeasurementWinderTop"(execute               := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.execute,
+                                     abort                 := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.abort,
+                                     warmUpTime            := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.warmUpTime,
+                                     rampTime              := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.rampTime,
+                                     noOfMeasurementPoints := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.noOfMeasurementPoints,
+                                     sizeOfArray           := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.sizeOfArray,
+                                     maxSpeed              := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.maxSpeed,
+                                     speedValues           := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.speedValues,
+                                     measurementDelayTime  := "LConSMC_Data".frictionMeasurement["TOP_WINDER"].in.measurementDelayTime,
+                                     done                  => "LConSMC_Data".frictionMeasurement["TOP_WINDER"].out.done,
+                                     valid                 => "LConSMC_Data".frictionMeasurement["TOP_WINDER"].out.valid,
+                                     aborted               => "LConSMC_Data".frictionMeasurement["TOP_WINDER"].out.aborted,
+                                     busy                  => "LConSMC_Data".frictionMeasurement["TOP_WINDER"].out.busy,
+                                     error                 => "LConSMC_Data".frictionMeasurement["TOP_WINDER"].out.error,
+                                     subfunctionState      => "LConSMC_Data".frictionMeasurement["TOP_WINDER"].out.subfunctionState,
+                                     status                => "LConSMC_Data".frictionMeasurement["TOP_WINDER"].out.status,
+                                     torqueOutValues       := "LConSMC_Data".WinderConfig["TOP_WINDER"].torquePrecontrolConfig.yn_torqueValues,
+                                     speedOutValues        := "LConSMC_Data".WinderConfig["TOP_WINDER"].torquePrecontrolConfig.xn_speedValues,
+                                     axis                  := "winderTop");
+  
+  // Record friction measurement for bottom winder
+  "InstFrictionMeasurementWinderDown"(execute               := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.execute,
+                                      abort                 := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.abort,
+                                      warmUpTime            := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.warmUpTime,
+                                      rampTime              := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.rampTime,
+                                      noOfMeasurementPoints := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.noOfMeasurementPoints,
+                                      sizeOfArray           := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.sizeOfArray,
+                                      maxSpeed              := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.maxSpeed,
+                                      speedValues           := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.speedValues,
+                                      measurementDelayTime  := "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].in.measurementDelayTime,
+                                      done                  => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.done,
+                                      valid                 => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.valid,
+                                      aborted               => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.aborted,
+                                      busy                  => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.busy,
+                                      error                 => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.error,
+                                      subfunctionState      => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.subfunctionState,
+                                      status                => "LConSMC_Data".frictionMeasurement["BOTTOM_WINDER"].out.status,
+                                      torqueOutValues       := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"].torquePrecontrolConfig.yn_torqueValues,
+                                      speedOutValues        := "LConSMC_Data".WinderConfig["BOTTOM_WINDER"].torquePrecontrolConfig.xn_speedValues,
+                                      axis                  := "winderBottom");
+  
+END_REGION

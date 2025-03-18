@@ -1,3 +1,5 @@
+# 此版本不使用Agent，强制直接使用retriever提供参考，与用户query一起输入到LLM中生成结果
+
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OpenAIEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -22,12 +24,6 @@ text_splitter = RecursiveCharacterTextSplitter(
     chunk_overlap = 0
 )
 chunks = text_splitter.split_text(scl_code)
-
-# for i in range(10):
-#     print(chunks[i])
-#     print('--------------------------------------------------------------------------')
-
-# embeddings = OpenAIEmbeddings(model='text-embedding-3-large')
 embeddings = HuggingFaceEmbeddings()
 db = FAISS.from_texts(chunks, embeddings)
 
@@ -41,29 +37,25 @@ from langchain_community.chat_message_histories import StreamlitChatMessageHisto
 from langchain_core.prompts import PromptTemplate
 from langchain.agents import create_react_agent, AgentExecutor
 from langchain_community.callbacks.streamlit import StreamlitCallbackHandler
+from langchain_community.llms import huggingface_hub
+from langchain.chains import LLMChain
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
-from langchain.tools.retriever import create_retriever_tool
 from langchain_ollama import OllamaLLM
 
 st.set_page_config(page_title="Winder_SCL_Generator", layout="wide")
 st.title("Winder SCL Generator")
-msgs = StreamlitChatMessageHistory()
-if "messages" not in st.session_state or st.sidebar.button("Clear Chat"):
-    st.session_state['messages'] = [{"role": "assistant", "content": "Hello! I am the Winder SCL Generator Assistant. How can I help you today?"}]
-for msg in st.session_state.messages:
-    st.chat_message([msg["role"]]).write(msg["content"])
-
-# 搭建agent
 retriever = db.as_retriever(
             search_type="similarity_score_threshold",
             search_kwargs={"k": 1, "score_threshold": 0.2},
 )
-tool = create_retriever_tool(
-    retriever=retriever,
-    name="retriever",
-    description="Winder Scl Assistant",
-)
-tools = [tool]
+
+msgs = StreamlitChatMessageHistory()
+if "messages" not in st.session_state or st.sidebar.button("Clear Chat"):
+    st.session_state['messages'] = [{"role": "assistant", "content": "Hello! I am the Winder SCL Generator Assistant. How can I help you today?"}]
+# for msg in st.session_state.messages:
+#     st.chat_message([msg["role"]]).write(msg["content"])
+from langchain.tools.retriever import create_retriever_tool
+
 memory = ConversationBufferMemory(
     chat_memory=msgs,
     return_messages=True,
@@ -72,7 +64,7 @@ memory = ConversationBufferMemory(
 )
 
 #指令模板
-instructions ="""You are an angent designed to generate SCL for the Winder.
+instructions ="""You are an agent designed to generate SCL for the Winder.
 Meanwhile the user quesion is input, the SCL reference will also be given.
 Your answer muset be based on the SCL reference.
 """
@@ -91,9 +83,7 @@ You have access to the following tools:
 IMPORTANT: You MUST generate the conclusion in ONE response without ANY ITERATION and following the format:
 
 1. Start with "Thought: [your reasoning]"
-2. Then analyze the SCL reference of input.
-    if still the quesion is unclear, use the retriever.
-    Action: [tool name {tool_names}]
+2. Then analyze the reference
 3. Conclude the result get from the retriever
      Thought:[result]
      Final Answer: [your conclusion]
@@ -110,23 +100,13 @@ New input: {input}
 base_prompt = PromptTemplate.from_template(base_prompt_template)
 prompt = base_prompt.partial(instructions = instructions)
 
-
-llm = OllamaLLM(model="deepseek-r1:7b",
-                temperature= 0)
-# llm = OllamaLLM(model="llama3.1",temperature=1)
-agent = create_react_agent(llm,tools,prompt)
-
-agent_executor = AgentExecutor(
-    agent=agent, 
-    tools = tools,
-    memory=memory, 
-    verbose=True,
-    handle_parsing_errors=True,
-    # handle_parsing_errors="Check the format of your response. Make sure to include 'Thought:', 'Action:', 'Action Input:', and 'Final Answer:' in the correct order.",
-    max_iterations=3,  # 添加最大迭代次数限制
-    # early_stopping_method= "generate"
-)
-
+# 选择使用的大模型
+# llm = OllamaLLM(model="deepseek-r1:7b",
+#                 temperature= 0)
+llm = OllamaLLM(model="llama3.1",
+                temperature=1)
+chain = LLMChain(promt = prompt,
+                 llm = llm)
 user_query = st.chat_input(placeholder='please issue an order')
 
 if user_query:
@@ -136,10 +116,13 @@ if user_query:
     with st.chat_message("assistat"):
         st_cb = StreamlitCallbackHandler(st.container())
         config = {'callbacks':[st_cb]}
+
         docs = retriever.get_relevant_documents(user_query)
-        # 提取文档内容并合并
-        docs_content = "\n".join([doc.page_content for doc in docs])
-        finalQuery = f"The question of user is: {user_query}\nThe following is some useful SCL references:\n{docs_content}"
-        response = agent_executor.invoke({'input':finalQuery},config=config)
+        finalQuery = "The question of user is:" +user_query + "/n The following is some useful references" + docs
+
+        response = chain.invoke({
+             finalQuery
+        })
+
         st.session_state.messages.append({"role":"assistat","content":response["output"]})
         st.write(response["output"])

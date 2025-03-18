@@ -1,0 +1,39 @@
+
+// functionality: initialization inputs of friction measurement V2 inputs
+
+#input.execute := FALSE;
+#input.abort := FALSE;
+#input.warmUpTime := T#30s;           //  Duration drive is moving with maximum speed before measurement starts
+#input.measurementDelayTime := T#1s;    //  Delay time before starting measurement when speed setpoint has been reached
+#input.rampTime := 1000.0;          //  [ms] Ramp-Up time to accelerate up to maximum speed setpoints (maxSpeed if <> 0 or maximum value from speedValues of maxSpeed = 0)
+#input.noOfMeasurementPoints := 100;    //  [-]  Number of measuring points per speed setpoint [50-500]
+#input.sizeOfArray := 10;              //  [-]  Limited between 1.."LCON_MAX_VALUE_BREAK_POINT_TABLE"+1
+//       input maxSpeed = 0  : Number of values taken from speedValues array [0..sizeOfArray-1]
+//       input maxSpeed <> 0 : Number of speed setpoints between maxSpeed and 0
+#input.maxSpeed := 0.0;             //  [RPM-load side]  maxSpeed = 0  : Number of values taken from speedValues array [0..sizeOfArray-1]
+//                   maxSpeed <> 0 : Automatic speed setpoint generation between maxSpeed and 0 --> Number of steps defined via sizeOfArray
+
+// Speed setpoints to be measured if "maxSpeed" = 0
+// !Values must be entered in [RPM] on motor side!
+// --> Conversion on TO unit will be done automatically
+#input.speedValues.values[0] := 100.0;  // [RPM] on drive side
+#input.speedValues.values[1] := 200.0;
+#input.speedValues.values[2] := 300.0;
+#input.speedValues.values[3] := 400.0;
+#input.speedValues.values[4] := 500.0;
+#input.speedValues.values[5] := 600.0;
+#input.speedValues.values[6] := 700.0;
+#input.speedValues.values[7] := 800.0;
+#input.speedValues.values[8] := 900.0;
+#input.speedValues.values[9] := 1000.0;
+#input.speedValues.values[10] := 0.0;
+#input.speedValues.values[11] := 0.0;
+#input.speedValues.values[12] := 0.0;
+#input.speedValues.values[13] := 0.0;
+#input.speedValues.values[14] := 0.0;
+#input.speedValues.values[15] := 0.0;
+#input.speedValues.values[16] := 0.0;
+#input.speedValues.values[17] := 0.0;
+#input.speedValues.values[18] := 0.0;
+#input.speedValues.values[19] := 0.0;
+

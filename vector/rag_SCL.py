@@ -5,27 +5,21 @@ from langchain_community.vectorstores import FAISS
 from langchain.document_loaders import TextLoader
 import numpy as np
 
-# new version
 #define the GPU for embedding
 
 #自动分割代码段
 # 1. 加载txt文件
-with open(r"D:\coding\vector-cursor\cleaned_scl_codes2.txt", "r", encoding='utf-8') as f:
+with open(r"D:\coding\vector\combined_scl_codes.txt", "r") as f:
       scl_code = f.read()
 
 # scl_code = TextLoader.load_and_split("combined_scl_codes.txt")
 
 # 2. 代码分块（按函数/逻辑块分割）
 text_splitter = RecursiveCharacterTextSplitter(
-    separators='//',
-    chunk_size=1000,
-    chunk_overlap = 0
+    chunk_size=200,
+    chunk_overlap = 20
 )
 chunks = text_splitter.split_text(scl_code)
-
-# for i in range(10):
-#     print(chunks[i])
-#     print('--------------------------------------------------------------------------')
 
 # embeddings = OpenAIEmbeddings(model='text-embedding-3-large')
 embeddings = HuggingFaceEmbeddings()
@@ -54,7 +48,7 @@ st.set_page_config(page_title="Winder_SCL_Generator", layout="wide")
 st.title("Winder SCL Generator")
 retriever = db.as_retriever(
             search_type="similarity_score_threshold",
-            search_kwargs={"k": 1, "score_threshold": 0.2},
+            search_kwargs={"k": 5, "score_threshold": 0.2},
 )
 
 msgs = StreamlitChatMessageHistory()
@@ -71,8 +65,8 @@ from langchain.tools.retriever import create_retriever_tool
 
 tool = create_retriever_tool(
     retriever=retriever,
-    name="retriever",
-    description="Winder Scl Assistant",
+    name="retrieverSSSSSS",
+    description="SSSSSS_company_rules_Searcher",
 )
 tools = [tool]
 memory = ConversationBufferMemory(
@@ -88,48 +82,6 @@ You can use the retriever to search for the information and answer the questions
 Maybe you can answer the questions without searching, but still you must search with the retriever.
 If you can't find the relevant information in the retriever, you can just return"Sry, I can't do that,plaese descripe it more sepecifically!"
 """
-# base_prompt_template ="""
-# {instructions}
-
-# TOOLS:
-# -----------------------------
-
-# You have access to the following tools:
-# {tools}
-
-# Any questions about SCL code, you must use the tools.
-# Any thought, any actions ALWAYS follow these exact formats.
-
-# To use a tool, you MUST use the exact format:
-
-# Thought: [your reasoning about whether to use a tool]
-# Action: [the action to take, must be one of: {tool_names}]
-# Action Input: [the input to the tool]
-# Observation: [the result of the action]
-# Thought: [your reasoning about the observation]
-# Action: [next action if needed]
-# ... (repeat as needed)
-# Final Answer: [your final response]
-
-# If you do not need to use a tool, you MUST use this exact format:
-
-# Thought: Do I need to use a tool? No
-# Final Answer: [your response here]
-
-# Remember: ALWAYS follow these exact formats. Each response must start with "Thought:" and end with a "Final Answer:".
-
-# Begin!
-
-# Previous conversation history:
-# {chat_history}
-
-# New input: {input}
-
-# {agent_scratchpad}
-# """
-
-
-# Modify the base_prompt_template to be more strict
 base_prompt_template ="""
 {instructions}
 
@@ -139,31 +91,33 @@ TOOLS:
 You have access to the following tools:
 {tools}
 
-IMPORTANT: You MUST generate the conclusion in ONE response without ANY ITERATION and following the format:
+Any questions about SCL code, you must use the tools.
 
-1. Start with "Thought: [your reasoning]"
-2. Then use a tool:
-     Thought: [reasoning]
-     Action: [tool name {tool_names}]
-     Action Input: [input for the tool]
-     Observation: [result]
-3. Conclude the result get from the retriever
-     Thought:[result]
-     Final Answer: [your conclusion]
-4. End with "Final Answer: [your conclusion]"
+To use a tool, please use the following format:
+ZWJ'''
+*******************************************************
+Thought: Do I need to use a tool? Yes
+Action: the action to take, should be one of [{tool_names}]
+Action Input:{input}
+Observation: the result of the action
+'''
 
-EXAMPLE FORMAT:
-Thought: I need to search for information about SCL code
-Action: retriever
-Action Input: What is the standard format for SCL function?
-Observation: [Search Results]
-Final Answer: Here is the SCL code...
+If you do not need to use a tool, you MUST use the format:
+ZWJ'''
+*******************************************************
+Thought: Do I need to use a tool? No
+Action: No
+Action Input: None
+Final Answer:[your response here]
+'''
+
+Begin!
 
 Previous conversation history:
 {chat_history}
 
-New input: {input}
-
+New input:
+{input}
 {agent_scratchpad}
 """
 
@@ -180,10 +134,8 @@ prompt = base_prompt.partial(instructions = instructions)
 
 # model = init_chat_model("llama3-8b-8192", model_provider="groq")
 
-# llm = OllamaLLM(model="deepseek-r1:7b",
-#                 temperature= 0)
-llm = OllamaLLM(model="llama3.1",
-                temperature=1)
+# llm = OllamaLLM(model="deepseek-r1:7b")
+llm = OllamaLLM(model="llama3.1")
 agent = create_react_agent(llm,tools,prompt)
 
 # 测试tool配置正确
@@ -194,16 +146,8 @@ agent = create_react_agent(llm,tools,prompt)
 # no marching contents可能是来自于这里的
 # agent_executor = AgentExecutor(agent=agent, tools=tools, memory=memory, verbose=True,
 #                                handle_parsing_errors='No marching contents')
-agent_executor = AgentExecutor(
-    agent=agent, 
-    tools=tools, 
-    memory=memory, 
-    verbose=True,
-    handle_parsing_errors=True,
-    # handle_parsing_errors="Check the format of your response. Make sure to include 'Thought:', 'Action:', 'Action Input:', and 'Final Answer:' in the correct order.",
-    max_iterations=3,  # 添加最大迭代次数限制
-    # early_stopping_method= "generate"
-)
+agent_executor = AgentExecutor(agent=agent, tools=tools, memory=memory, verbose=True,
+                               handle_parsing_errors=True)
 
 user_query = st.chat_input(placeholder='please issue an order')
 
@@ -219,8 +163,7 @@ if user_query:
         st.write(response["output"])
 
 # test without UI
-# user_query = 'please write a SCL code to set the friction measurement curve'
-# # user_query = 'hello, who are you'
+# user_query = 'please write a SCL code for initialize the frictionmeasurement'
 # if user_query:
 #     dic = dict(input=user_query)
 #     # response = agent_executor.invoke(dic)
